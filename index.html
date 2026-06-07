@@ -740,7 +740,7 @@ const editor = CodeMirror(document.getElementById('editor-container'), {
   extraKeys: {
     'Ctrl-Enter': () => runPreview(),
     'Ctrl-S': () => saveActive(),
-    'Alt-Space': cm => {
+    'Ctrl-.': cm => {
       const opts = getHintOptions(cm.getOption('mode'));
       if (opts) cm.showHint(opts);
     },
