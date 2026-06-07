@@ -170,6 +170,18 @@ a { color: var(--primary); }
 .fi-icon { font-size:15px; flex-shrink:0; color:var(--subtext); display:flex; align-items:center; }
 .fi-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .fi-dirty { font-size:8px; color:var(--warning); flex-shrink:0; display:flex; align-items:center; }
+.folder-row {
+  display:flex; align-items:center; gap:6px; padding:4px 8px;
+  border-radius:6px; cursor:pointer; color:var(--text); font-size:12px;
+  font-weight:600; user-select:none; transition:background .1s;
+}
+.folder-row:hover { background:var(--bg3); }
+.folder-chevron { font-size:13px; transition:transform .15s; flex-shrink:0; color:var(--subtext); }
+.folder-chevron.open { transform:rotate(90deg); }
+.folder-icon { font-size:16px; color:#e8a020; flex-shrink:0; }
+.folder-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.folder-children { padding-left:12px; }
+.file-item.in-folder { padding-left:20px; }
 
 #sidebar-footer { padding:8px; border-top:1px solid var(--border); flex-shrink:0; }
 .upload-area {
@@ -443,6 +455,7 @@ a { color: var(--primary); }
     <div id="sidebar-header">
       <span class="sidebar-title"><i class="bx bx-folder"></i> Projekt</span>
       <button class="icon-btn" id="btn-new-file" title="Nowy plik" onclick="openNewFileDialog()"><i class="bx bx-plus"></i></button>
+      <button class="icon-btn" id="btn-new-folder" title="Nowy folder" onclick="openNewFolderDialog()"><i class="bx bx-folder-plus"></i></button>
       <button class="icon-btn" title="Wgraj plik (obraz, PDF...)" onclick="document.getElementById('img-upload-inp').click()"><i class="bx bx-image-add"></i></button>
       <input type="file" id="img-upload-inp" accept="image/*,.pdf" hidden multiple>
     </div>
@@ -876,20 +889,65 @@ async function loadFiles() {
 function renderFileList() {
   const list = document.getElementById('file-list');
   list.innerHTML = '';
+  if (!state.collapsedFolders) state.collapsedFolders = new Set();
+
   const sorted = [...state.files.keys()].sort((a,b) => a.localeCompare(b));
+
+  // group by top-level folder
+  const root = [];
+  const folders = {};
   for (const name of sorted) {
+    const slash = name.indexOf('/');
+    if (slash === -1) root.push(name);
+    else {
+      const folder = name.substring(0, slash);
+      if (!folders[folder]) folders[folder] = [];
+      folders[folder].push(name);
+    }
+  }
+
+  const renderFileItem = (name, inFolder) => {
     const f = state.files.get(name);
     const div = document.createElement('div');
-    div.className = 'file-item' + (name === state.activeFile ? ' active' : '');
+    const shortName = inFolder ? name.substring(name.indexOf('/') + 1) : name;
+    div.className = 'file-item' + (name === state.activeFile ? ' active' : '') + (inFolder ? ' in-folder' : '');
     div.dataset.name = name;
     div.innerHTML =
       `<span class="fi-icon">${fileIcon(name)}</span>` +
-      `<span class="fi-name" title="${name}">${name}</span>` +
+      `<span class="fi-name" title="${name}">${shortName}</span>` +
       (f.dirty ? '<span class="fi-dirty"><i class="bx bxs-circle"></i></span>' : '');
     div.addEventListener('click', () => switchFile(name));
     div.addEventListener('contextmenu', e => { e.preventDefault(); showCtxMenu(e, name); });
     list.appendChild(div);
+  };
+
+  const renderFolderRow = (folderName, files) => {
+    const isOpen = !state.collapsedFolders.has(folderName);
+    const row = document.createElement('div');
+    row.className = 'folder-row';
+    row.innerHTML =
+      `<i class="bx bx-chevron-right folder-chevron ${isOpen ? 'open' : ''}"></i>` +
+      `<i class="bx bx-folder${isOpen ? '-open' : ''} folder-icon"></i>` +
+      `<span class="folder-name">${folderName}</span>` +
+      `<button class="icon-btn" title="Nowy plik w folderze"><i class="bx bx-plus" style="font-size:14px"></i></button>`;
+    row.querySelector('.icon-btn').addEventListener('click', e => {
+      e.stopPropagation(); openNewFileDialog(folderName);
+    });
+    row.addEventListener('click', () => {
+      if (state.collapsedFolders.has(folderName)) state.collapsedFolders.delete(folderName);
+      else state.collapsedFolders.add(folderName);
+      renderFileList();
+    });
+    list.appendChild(row);
+    if (isOpen) {
+      for (const name of files) renderFileItem(name, true);
+    }
+  };
+
+  for (const [folderName, files] of Object.entries(folders).sort()) {
+    renderFolderRow(folderName, files);
   }
+  for (const name of root) renderFileItem(name, false);
 }
 
 function switchFile(name) {
@@ -962,15 +1020,43 @@ async function saveAll() {
 // ════════════════════════════════════════════════════════════
 let dialogCallback = null;
 
-function openNewFileDialog() {
-  openDialog('Nowy plik', 'np. strona.html lub funkcje.php', async (name) => {
-    if (!name.includes('.')) { throw new Error('Nazwa musi zawierać rozszerzenie (np. .html .css .php)'); }
-    if (state.files.has(name)) { throw new Error('Plik o tej nazwie już istnieje'); }
-    await apiPost('/api/file', { name, content: '' });
-    state.files.set(name, { content: '', binary: false, dirty: false });
+function getDefaultContent(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  switch (ext) {
+    case 'html': return `<!DOCTYPE html>\n<html lang="pl">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Strona</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n\n  <script src="script.js"><\/script>\n</body>\n</html>`;
+    case 'css':  return `/* Style */\n* { box-sizing: border-box; margin: 0; padding: 0; }\nbody {\n  font-family: Arial, sans-serif;\n}\n`;
+    case 'js':   return `// JavaScript\n`;
+    case 'php':  return `<?php\n`;
+    case 'sql':  return `-- SQL\n`;
+    case 'json': return `{\n}\n`;
+    case 'xml':  return `<?xml version="1.0" encoding="UTF-8"?>\n<root>\n</root>\n`;
+    default:     return '';
+  }
+}
+
+function openNewFileDialog(folderPrefix) {
+  const placeholder = folderPrefix ? `np. index.html lub style.css` : 'np. strona.html lub css/style.css';
+  openDialog('Nowy plik' + (folderPrefix ? ' w ' + folderPrefix : ''), placeholder, async (name) => {
+    const fullName = folderPrefix ? folderPrefix + '/' + name : name;
+    if (!fullName.includes('.')) { throw new Error('Nazwa musi zawierać rozszerzenie (np. .html .css .php)'); }
+    if (state.files.has(fullName)) { throw new Error('Plik o tej nazwie już istnieje'); }
+    const content = getDefaultContent(fullName);
+    await apiPost('/api/file', { name: fullName, content });
+    state.files.set(fullName, { content, binary: false, dirty: false });
     renderFileList();
-    switchFile(name);
-    showToast('Utworzono: ' + name);
+    switchFile(fullName);
+    showToast('Utworzono: ' + fullName);
+  });
+}
+
+function openNewFolderDialog() {
+  openDialog('Nowy folder', 'np. css  lub  js  lub  images', async (name) => {
+    if (!/^[a-zA-Z0-9_\-]+$/.test(name)) { throw new Error('Tylko litery, cyfry, _ i - (bez spacji i kropek)'); }
+    if ([...state.files.keys()].some(f => f.startsWith(name + '/'))) { throw new Error('Folder już istnieje'); }
+    await apiPost('/api/mkdir', { name });
+    if (!state.collapsedFolders) state.collapsedFolders = new Set();
+    renderFileList();
+    showToast('Folder utworzony: ' + name);
   });
 }
 

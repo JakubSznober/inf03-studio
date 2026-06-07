@@ -56,8 +56,13 @@ const respond = (res, code, data, ct = 'application/json; charset=utf-8') => {
 };
 
 const validName = n =>
+  typeof n === 'string' && n.length > 0 && n.length <= 200 &&
+  /^[a-zA-Z0-9_\-./]+$/.test(n) && !n.includes('..') && !n.startsWith('/') && !n.endsWith('/') &&
+  /\.[a-zA-Z0-9]+$/.test(n);
+
+const validDir = n =>
   typeof n === 'string' && n.length > 0 && n.length <= 100 &&
-  /^[a-zA-Z0-9_\-.]+\.[a-zA-Z0-9]+$/.test(n) && !n.includes('..');
+  /^[a-zA-Z0-9_\-]+$/.test(n) && !n.includes('..');
 
 const validUser = n => typeof n === 'string' && /^[a-zA-Z0-9_]{3,30}$/.test(n);
 
@@ -169,7 +174,16 @@ http.createServer(async (req, res) => {
     }
 
     if (p === '/api/files' && m === 'GET') {
-      const files = fs.existsSync(fd) ? fs.readdirSync(fd).map(n => ({ name: n })) : [];
+      const files = [];
+      function listRec(dir, prefix) {
+        if (!fs.existsSync(dir)) return;
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const rel = prefix ? prefix + '/' + e.name : e.name;
+          if (e.isDirectory()) listRec(path.join(dir, e.name), rel);
+          else files.push({ name: rel });
+        }
+      }
+      listRec(fd, '');
       return respond(res, 200, { files });
     }
 
@@ -186,11 +200,21 @@ http.createServer(async (req, res) => {
       return respond(res, 200, { content: fs.readFileSync(fp, 'utf8') });
     }
 
+    if (p === '/api/mkdir' && m === 'POST') {
+      const { name } = body;
+      if (!validDir(name)) return respond(res, 400, { error: 'Nieprawidłowa nazwa folderu' });
+      const dp = safeJoin(fd, name);
+      if (!dp) return respond(res, 403, { error: 'Forbidden' });
+      fs.mkdirSync(dp, { recursive: true });
+      return respond(res, 200, { ok: true });
+    }
+
     if (p === '/api/file' && m === 'POST') {
       const { name, content } = body;
       if (!validName(name)) return respond(res, 400, { error: 'Nieprawidłowa nazwa pliku' });
       const fp = safeJoin(fd, name);
       if (!fp) return respond(res, 403, { error: 'Forbidden' });
+      fs.mkdirSync(path.dirname(fp), { recursive: true });
       fs.writeFileSync(fp, content ?? '', 'utf8');
       return respond(res, 200, { ok: true });
     }
@@ -228,13 +252,21 @@ http.createServer(async (req, res) => {
     }
 
     if (p === '/api/export' && m === 'GET') {
-      const names = fs.existsSync(fd) ? fs.readdirSync(fd) : [];
-      const files = names.map(n => {
-        const fp  = path.join(fd, n);
-        const ext = path.extname(n).toLowerCase();
-        const bin = BIN_EXT.has(ext);
-        return { name: n, binary: bin, content: bin ? fs.readFileSync(fp).toString('base64') : fs.readFileSync(fp,'utf8') };
-      });
+      const files = [];
+      function collectRec(dir, prefix) {
+        if (!fs.existsSync(dir)) return;
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const rel = prefix ? prefix + '/' + e.name : e.name;
+          if (e.isDirectory()) collectRec(path.join(dir, e.name), rel);
+          else {
+            const fp = path.join(dir, e.name);
+            const ext = path.extname(e.name).toLowerCase();
+            const bin = BIN_EXT.has(ext);
+            files.push({ name: rel, binary: bin, content: bin ? fs.readFileSync(fp).toString('base64') : fs.readFileSync(fp,'utf8') });
+          }
+        }
+      }
+      collectRec(fd, '');
       return respond(res, 200, { files });
     }
 
