@@ -375,21 +375,6 @@ a { color: var(--primary); }
   transition:opacity .2s; z-index:999; border:1px solid var(--border); }
 #toast.show { opacity:1; }
 
-/* ── FAB BUTTONS ─────────────────────────────────────────────── */
-.fab-wrap { position:fixed; bottom:16px; right:16px; display:flex; flex-direction:column;
-  gap:8px; align-items:flex-end; z-index:300; }
-.fab { position:relative; display:flex; align-items:center; justify-content:center;
-  width:40px; height:40px; border-radius:50%;
-  border:1px solid var(--border); background:var(--bg); box-shadow:var(--shadow);
-  cursor:pointer; font-size:12px; font-weight:500; color:var(--text); transition:.15s; }
-.fab:hover { background:var(--bg3); border-color:var(--primary); color:var(--primary); }
-.fab i { font-size:18px; pointer-events:none; }
-.fab-tip { position:absolute; right:calc(100% + 8px); top:50%; transform:translateY(-50%);
-  background:var(--bg3); color:var(--text); font-size:11px; font-weight:500;
-  padding:4px 8px; border-radius:6px; white-space:nowrap; border:1px solid var(--border);
-  opacity:0; pointer-events:none; transition:opacity .15s; }
-.fab:hover .fab-tip { opacity:1; }
-
 /* ── SCROLLBAR ───────────────────────────────────────────────── */
 ::-webkit-scrollbar { width:6px; height:6px; }
 ::-webkit-scrollbar-track { background:transparent; }
@@ -439,6 +424,10 @@ a { color: var(--primary); }
     Auto
   </label>
   <button class="tb-btn" id="btn-console" title="Konsola (Ctrl+`)"><i class="bx bx-terminal"></i> Konsola</button>
+  <div class="sep"></div>
+  <button class="tb-btn-icon" id="fab-tpl" title="Szablony"><i class="bx bx-layout"></i></button>
+  <button class="tb-btn-icon" id="fab-pdf" title="Przeglądarka PDF"><i class="bx bx-file"></i></button>
+  <button class="tb-btn-icon" id="fab-db" title="Baza Danych"><i class="bx bx-data"></i></button>
   <div class="spacer"></div>
   <button class="tb-btn-icon" id="btn-theme" onclick="toggleTheme()" title="Zmień motyw"><i class="bx bx-moon" id="theme-icon"></i></button>
   <div class="user-chip" id="user-chip"><i class="bx bx-user"></i><strong id="user-name">—</strong></div>
@@ -614,12 +603,7 @@ a { color: var(--primary); }
 <!-- ═══ TOAST ═════════════════════════════════════════════════ -->
 <div id="toast"></div>
 
-<!-- ═══ FABs ══════════════════════════════════════════════════ -->
-<div class="fab-group">
-  <button class="fab" id="fab-tpl"><span class="fab-tip">Szablony</span><i class="bx bx-layout"></i></button>
-  <button class="fab" id="fab-pdf"><span class="fab-tip">Przeglądarka PDF</span><i class="bx bx-file"></i></button>
-  <button class="fab" id="fab-db"><span class="fab-tip">Baza Danych</span><i class="bx bx-data"></i></button>
-</div>
+
 
 <!-- ═══ SCRIPTS ═══════════════════════════════════════════════ -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
