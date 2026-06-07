@@ -1,0 +1,8 @@
+{
+  "name": "inf03-studio",
+  "version": "1.0.0",
+  "description": "Środowisko nauki do egzaminu INF.03",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

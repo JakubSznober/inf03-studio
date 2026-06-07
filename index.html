@@ -1,0 +1,1712 @@
+﻿<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>INF.03 Studio v2</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#1e1e2e;--surface:#313244;--surface2:#45475a;--primary:#89b4fa;
+      --green:#a6e3a1;--red:#f38ba8;--yellow:#f9e2af;--cyan:#89dceb;
+      --text:#cdd6f4;--subtext:#a6adc8;--border:#585b70;
+      --topbar-h:48px;--sidebar-w:190px;
+    }
+    html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text)}
+
+    /* ── AUTH OVERLAY ── */
+    #auth-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(6px)}
+    #auth-overlay.hidden{display:none}
+    .auth-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:370px;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+    .auth-logo{font-size:22px;font-weight:800;color:var(--primary);text-align:center;margin-bottom:6px}
+    .auth-sub{text-align:center;color:var(--subtext);font-size:13px;margin-bottom:24px}
+    .auth-tabs{display:flex;border-radius:8px;overflow:hidden;border:1px solid var(--border);margin-bottom:22px}
+    .auth-tab{flex:1;padding:9px;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--subtext);border:none;transition:all .15s}
+    .auth-tab.active{background:var(--primary);color:var(--bg)}
+    .auth-form{display:none;flex-direction:column;gap:12px}
+    .auth-form.visible{display:flex}
+    .auth-form label{font-size:12px;color:var(--subtext);margin-bottom:2px;display:block}
+    .auth-form input{width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+    .auth-form input:focus{border-color:var(--primary)}
+    .auth-btn{padding:10px;background:var(--primary);color:var(--bg);border:none;border-radius:7px;font-size:14px;font-weight:700;cursor:pointer;transition:filter .15s}
+    .auth-btn:hover{filter:brightness(1.1)}
+    .auth-err{color:var(--red);font-size:12px;text-align:center;min-height:16px}
+
+    /* ── TOPBAR ── */
+    #topbar{height:var(--topbar-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:6px;flex-shrink:0;z-index:200}
+    .logo{font-size:14px;font-weight:800;color:var(--primary);white-space:nowrap;margin-right:4px}
+    .logo span{color:var(--subtext);font-weight:400;font-size:11px}
+    .sep{width:1px;height:22px;background:var(--border);margin:0 2px;flex-shrink:0}
+    .tb-btn{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+    .tb-btn:hover{border-color:var(--primary);color:var(--primary)}
+    .tb-btn.accent{background:var(--primary);color:var(--bg);border-color:var(--primary);font-weight:700}
+    .tb-btn.accent:hover{filter:brightness(1.1)}
+    .tb-btn:disabled{opacity:.4;pointer-events:none}
+    .spacer{flex:1}
+    .user-chip{display:flex;align-items:center;gap:6px;padding:4px 10px;background:var(--bg);border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--subtext)}
+    .user-chip strong{color:var(--primary)}
+    .dirty-badge{font-size:10px;color:var(--yellow);font-weight:700}
+
+    /* auto-preview toggle */
+    .tog-row{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--subtext);cursor:pointer;user-select:none;flex-shrink:0}
+    .tog-track{width:30px;height:16px;border-radius:8px;background:var(--surface2);position:relative;transition:background .2s}
+    .tog-track::after{content:'';position:absolute;width:12px;height:12px;border-radius:50%;background:white;top:2px;left:2px;transition:left .2s}
+    .tog-track.on{background:var(--primary)}
+    .tog-track.on::after{left:16px}
+
+    /* ── WORKSPACE ── */
+    #workspace{display:flex;height:calc(100vh - var(--topbar-h));overflow:hidden}
+
+    /* ── FILE SIDEBAR ── */
+    #file-sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+    #sidebar-header{padding:0 8px 0 10px;height:36px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0}
+    .sidebar-title{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--subtext);flex:1;letter-spacing:.07em}
+    .icon-btn{width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;border:none;background:transparent;color:var(--subtext);cursor:pointer;font-size:13px;transition:all .15s}
+    .icon-btn:hover{background:var(--surface2);color:var(--primary)}
+    #file-list{flex:1;overflow-y:auto;padding:4px 0}
+    .file-item{display:flex;align-items:center;padding:6px 8px;font-size:12px;cursor:pointer;gap:5px;border-radius:5px;margin:1px 4px;transition:background .1s}
+    .file-item:hover{background:var(--surface2)}
+    .file-item.active{background:rgba(137,180,250,.15);color:var(--primary)}
+    .fi-icon{width:16px;text-align:center;font-size:12px;flex-shrink:0}
+    .fi-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .fi-dirty{color:var(--yellow);font-size:9px;flex-shrink:0}
+    #sidebar-footer{padding:8px;border-top:1px solid var(--border);flex-shrink:0}
+    .upload-area{border:1px dashed var(--border);border-radius:6px;padding:8px;text-align:center;font-size:11px;color:var(--subtext);cursor:pointer;transition:all .15s}
+    .upload-area:hover{border-color:var(--primary);color:var(--primary)}
+
+    /* ── EDITOR ── */
+    #editor-panel{display:flex;flex-direction:column;background:var(--bg);min-width:150px;flex:1}
+    #editor-header{height:36px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0}
+    .active-file-name{font-size:13px;font-weight:600;color:var(--text);flex:1}
+    #editor-container{flex:1;overflow:hidden;position:relative}
+    #img-viewer{display:none;flex:1;align-items:center;justify-content:center;background:var(--bg);padding:20px;overflow:auto}
+    #img-viewer img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+    #no-file-msg{display:flex;align-items:center;justify-content:center;color:var(--subtext);font-size:14px;flex:1}
+    .CodeMirror{height:100%!important;font-size:14px;line-height:1.6;font-family:'Cascadia Code','Fira Code','Consolas',monospace}
+
+    /* ── RESIZER ── */
+    #resizer{width:5px;flex-shrink:0;background:var(--border);cursor:col-resize;transition:background .15s}
+    #resizer:hover,#resizer.drag{background:var(--primary)}
+
+    /* ── PREVIEW ── */
+    #preview-panel{flex:1;display:flex;flex-direction:column;background:white;overflow:hidden;min-width:100px}
+    #preview-header{height:36px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px;color:var(--subtext);flex-shrink:0}
+    .live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:blink 2s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    #preview-frame{flex:1;border:none;background:white}
+    .ph-preview{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--subtext);font-size:13px;background:var(--bg)}
+
+    /* ── PHP bar ── */
+    #php-bar{display:none;align-items:center;gap:6px;padding:0 10px;height:32px;background:rgba(136,192,208,.12);border-bottom:1px solid var(--border);flex-shrink:0;font-size:12px;color:var(--subtext)}
+    #php-bar.show{display:flex}
+    #php-qs{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;padding:3px 8px;outline:none}
+    #php-qs:focus{border-color:var(--primary)}
+    .php-tag{background:rgba(136,192,208,.2);color:#89dceb;border:1px solid #89dceb;border-radius:4px;font-size:10px;font-weight:700;padding:1px 6px;letter-spacing:.05em}
+    #php-not-found{display:none;padding:20px;text-align:center;color:var(--subtext);font-size:13px;line-height:1.8;background:var(--bg);flex:1}
+    #php-not-found a{color:var(--primary)}
+    .php-err-box{background:rgba(243,139,168,.1);border-top:2px solid var(--red);color:var(--red);padding:8px 12px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;max-height:120px;overflow-y:auto;flex-shrink:0}
+    #console-wrap{height:0;overflow:hidden;transition:height .2s;background:#0d0d1a;border-top:1px solid var(--border);flex-shrink:0}
+    #console-wrap.open{height:140px}
+    #console-hdr{display:flex;align-items:center;padding:0 10px;height:26px;background:var(--surface);font-size:11px;color:var(--subtext);gap:8px;border-bottom:1px solid var(--border);flex-shrink:0}
+    #console-clr{margin-left:auto;font-size:11px;cursor:pointer;padding:2px 8px;border-radius:4px;background:transparent;border:1px solid var(--border);color:var(--subtext);transition:all .15s}
+    #console-clr:hover{border-color:var(--red);color:var(--red)}
+    #console-out{height:calc(140px - 27px);overflow-y:auto;padding:4px 10px;font-family:'Consolas',monospace;font-size:12px}
+    .cl{padding:1px 0}.cl.log{color:#cdd6f4}.cl.warn{color:#f9e2af}.cl.error{color:#f38ba8}
+
+    /* ── FLOATING PANELS ── */
+    .fp{position:fixed;z-index:1000;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow:hidden;resize:both;min-width:200px;min-height:100px}
+    .fp.hidden{display:none!important}
+    .fp-title{display:flex;align-items:center;padding:0 10px;height:34px;background:var(--surface2);cursor:move;user-select:none;gap:8px;flex-shrink:0;border-bottom:1px solid var(--border)}
+    .fp-name{font-size:13px;font-weight:600;flex:1;color:var(--text)}
+    .fp-ctrl{width:20px;height:20px;border-radius:50%;border:none;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:filter .15s;font-weight:bold}
+    .fp-ctrl:hover{filter:brightness(1.2)}
+    .fp-ctrl.min{background:var(--yellow);color:#1e1e2e}
+    .fp-ctrl.cls{background:var(--red);color:#1e1e2e}
+    .fp-body{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+    .fp-body.mini{display:none}
+
+    /* PDF */
+    #pdf-fp{top:70px;right:20px;width:500px;height:600px}
+    #pdf-top{display:flex;align-items:center;gap:8px;flex-shrink:0}
+    #pdf-embed-box{flex:1;background:#525659;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:80px}
+    #pdf-embed-box embed{width:100%;height:100%;border:none}
+    .ph-fp{text-align:center;color:var(--subtext);font-size:13px;padding:20px}
+
+    /* DB */
+    #db-fp{top:70px;left:20px;width:640px;height:500px}
+    #db-toolbar{display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
+    .db-btn{padding:5px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;cursor:pointer;transition:all .15s}
+    .db-btn:hover{border-color:var(--primary);color:var(--primary)}
+    .db-btn:disabled{opacity:.4;pointer-events:none}
+    .db-btn.ok{background:var(--green);color:var(--bg);border-color:var(--green);font-weight:700}
+    .db-btn.ok:hover{filter:brightness(1.1)}
+    #db-status{font-size:12px;color:var(--subtext);padding:2px 0;flex-shrink:0}
+    #db-status.ok{color:var(--green)}
+    #db-status.err{color:var(--red)}
+    #db-tables{display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
+    .tbl-chip{padding:2px 9px;background:var(--bg);border:1px solid var(--border);border-radius:10px;font-size:11px;color:var(--subtext);cursor:pointer;transition:all .15s}
+    .tbl-chip:hover{border-color:var(--green);color:var(--green)}
+    #db-sql-wrap{border-radius:6px;overflow:hidden;flex-shrink:0;border:1px solid var(--border)}
+    #db-sql-wrap .CodeMirror{font-size:13px;min-height:80px}
+    #db-sql-wrap .CodeMirror-scroll{min-height:80px}
+    #db-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    #db-tpl-sel{background:var(--bg);border:1px solid var(--border);color:var(--subtext);font-size:12px;border-radius:5px;padding:4px 8px;cursor:pointer}
+    #db-tpl-sel:focus{outline:none;border-color:var(--primary)}
+    #db-result{overflow:auto}
+    .rt{width:100%;border-collapse:collapse;font-size:12px}
+    .rt th{background:var(--surface2);padding:5px 10px;text-align:left;font-weight:600;color:var(--primary);position:sticky;top:0}
+    .rt td{padding:4px 10px;border-bottom:1px solid var(--border);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .rt tr:hover td{background:rgba(255,255,255,.05)}
+    .res-msg{font-size:12px;padding:7px 10px;border-radius:6px}
+    .res-msg.ok{background:rgba(166,227,161,.15);color:var(--green)}
+    .res-msg.err{background:rgba(243,139,168,.15);color:var(--red)}
+    .row-count{font-size:11px;color:var(--subtext);padding:3px 0}
+
+    /* Templates panel */
+    #tpl-fp{top:70px;left:50%;transform:translateX(-50%);width:580px;height:480px}
+    .tpl-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;overflow-y:auto}
+    .tpl-card{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:10px 12px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:4px}
+    .tpl-card:hover{border-color:var(--primary);color:var(--primary)}
+    .tpl-card .tc-name{font-size:13px;font-weight:600}
+    .tpl-card .tc-lang{font-size:11px;color:var(--subtext)}
+    .tpl-del{margin-left:auto;font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid transparent;background:transparent;color:var(--subtext);cursor:pointer;transition:all .15s}
+    .tpl-del:hover{border-color:var(--red);color:var(--red)}
+    .tpl-section-title{font-size:11px;font-weight:700;text-transform:uppercase;color:var(--subtext);padding:6px 0 3px;border-bottom:1px solid var(--border);margin-bottom:4px;letter-spacing:.07em}
+
+    /* Context menu */
+    #ctx-menu{position:fixed;z-index:5000;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden;display:none;min-width:160px}
+    .ctx-item{padding:8px 16px;font-size:13px;cursor:pointer;transition:background .1s}
+    .ctx-item:hover{background:var(--surface2);color:var(--primary)}
+    .ctx-item.danger:hover{color:var(--red)}
+    .ctx-sep{height:1px;background:var(--border);margin:2px 0}
+
+    /* Dialog overlay */
+    #dialog-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:8000;backdrop-filter:blur(3px)}
+    #dialog-overlay.show{display:flex}
+    .dialog-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:340px;box-shadow:0 16px 48px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:12px}
+    .dialog-title{font-size:15px;font-weight:700;color:var(--text)}
+    .dialog-input{width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:14px;outline:none;transition:border-color .15s}
+    .dialog-input:focus{border-color:var(--primary)}
+    .dialog-actions{display:flex;gap:8px;justify-content:flex-end}
+    .dialog-btn{padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;cursor:pointer;transition:all .15s}
+    .dialog-btn.ok{background:var(--primary);color:var(--bg);border-color:var(--primary);font-weight:700}
+    .dialog-btn:hover{filter:brightness(1.1)}
+    .dialog-err{color:var(--red);font-size:12px;min-height:14px}
+
+    /* Toast */
+    #toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:var(--surface2);color:var(--text);padding:8px 20px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+    #toast.show{opacity:1}
+
+    /* FABs */
+    .fab-group{position:fixed;bottom:16px;right:16px;display:flex;flex-direction:column;gap:8px;z-index:500}
+    .fab{width:44px;height:44px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.4);transition:all .15s;position:relative}
+    .fab:hover{background:var(--surface2);border-color:var(--primary);transform:scale(1.06)}
+    .fab.active{background:var(--primary);color:var(--bg);border-color:var(--primary)}
+    .fab-tip{position:absolute;right:52px;background:var(--surface2);padding:3px 8px;border-radius:4px;font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s}
+    .fab:hover .fab-tip{opacity:1}
+
+    .file-btn{padding:5px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap}
+    .file-btn:hover{border-color:var(--primary);color:var(--primary)}
+    #pdf-fname{font-size:11px;color:var(--subtext);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--surface2)}
+  </style>
+</head>
+<body>
+
+<!-- ═══ AUTH OVERLAY ═══════════════════════════════════════════ -->
+<div id="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">⚡ INF.03 Studio</div>
+    <div class="auth-sub">Środowisko nauki do egzaminu INF.03</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="showAuthTab('login')">Logowanie</button>
+      <button class="auth-tab" id="tab-reg" onclick="showAuthTab('reg')">Rejestracja</button>
+    </div>
+    <form class="auth-form visible" id="form-login" onsubmit="doLogin(event)">
+      <div><label>Nazwa użytkownika</label><input id="li-user" autocomplete="username" required placeholder="np. jan123"></div>
+      <div><label>Hasło</label><input id="li-pass" type="password" autocomplete="current-password" required placeholder="••••••"></div>
+      <div class="auth-err" id="login-err"></div>
+      <button class="auth-btn" type="submit">Zaloguj się</button>
+    </form>
+    <form class="auth-form" id="form-reg" onsubmit="doRegister(event)">
+      <div><label>Nazwa użytkownika <small>(3–30 znaków, a-z 0-9 _)</small></label><input id="reg-user" autocomplete="username" required placeholder="np. jan123"></div>
+      <div><label>Hasło <small>(min. 4 znaki)</small></label><input id="reg-pass" type="password" autocomplete="new-password" required placeholder="••••••"></div>
+      <div><label>Powtórz hasło</label><input id="reg-pass2" type="password" autocomplete="new-password" required placeholder="••••••"></div>
+      <div class="auth-err" id="reg-err"></div>
+      <button class="auth-btn" type="submit">Zarejestruj się</button>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ TOPBAR ════════════════════════════════════════════════ -->
+<div id="topbar">
+  <div class="logo">⚡ INF.03 Studio <span>v2</span></div>
+  <div class="sep"></div>
+  <button class="tb-btn" id="btn-save" title="Zapisz aktywny plik (Ctrl+S)" onclick="saveActive()">💾 Zapisz</button>
+  <button class="tb-btn" id="btn-save-all" title="Zapisz wszystkie pliki" onclick="saveAll()">💾 Wszystkie</button>
+  <button class="tb-btn" id="btn-zip" title="Pobierz projekt jako ZIP" onclick="exportZip()">📦 ZIP</button>
+  <div class="sep"></div>
+  <button class="tb-btn accent" id="btn-run" title="Uruchom podgląd (Ctrl+Enter)" onclick="runPreview()">▶ Uruchom</button>
+  <div class="sep"></div>
+  <label class="tog-row" title="Automatyczny podgląd">
+    <div class="tog-track on" id="auto-track"></div>
+    Auto
+  </label>
+  <button class="tb-btn" id="btn-console" title="Konsola (Ctrl+`)">🖥 Konsola</button>
+  <div class="spacer"></div>
+  <div class="user-chip" id="user-chip"><strong id="user-name">—</strong></div>
+  <button class="tb-btn" id="btn-logout" onclick="doLogout()">Wyloguj</button>
+</div>
+
+<!-- ═══ WORKSPACE ═════════════════════════════════════════════ -->
+<div id="workspace">
+
+  <!-- File Sidebar -->
+  <div id="file-sidebar">
+    <div id="sidebar-header">
+      <span class="sidebar-title">📁 Projekt</span>
+      <button class="icon-btn" id="btn-new-file" title="Nowy plik" onclick="openNewFileDialog()">＋</button>
+      <button class="icon-btn" title="Wgraj obraz" onclick="document.getElementById('img-upload-inp').click()">🖼</button>
+      <input type="file" id="img-upload-inp" accept="image/*" hidden multiple>
+    </div>
+    <div id="file-list"></div>
+    <div id="sidebar-footer">
+      <div class="upload-area" onclick="document.getElementById('img-upload-inp').click()">🖼 Wgraj zdjęcia / pliki</div>
+    </div>
+  </div>
+
+  <!-- Editor Panel -->
+  <div id="editor-panel">
+    <div id="editor-header">
+      <span class="active-file-name" id="active-fname">—</span>
+      <span class="dirty-badge" id="dirty-badge" style="display:none">● niezapisane</span>
+      <button class="tb-btn" style="font-size:11px" id="btn-full-prev" title="Otwórz podgląd w nowej karcie" onclick="openFullPreview()">⧉ Pełny ekran</button>
+    </div>
+    <div id="editor-container"></div>
+    <div id="img-viewer"><img id="img-view-el" src="" alt=""></div>
+    <div id="no-file-msg" style="display:none">Wybierz plik z listy po lewej</div>
+  </div>
+
+  <!-- Resizer -->
+  <div id="resizer"></div>
+
+  <!-- Preview Panel -->
+  <div id="preview-panel">
+    <div id="preview-header">
+      <div class="live-dot"></div>
+      Podgląd
+      <div style="flex:1"></div>
+      <span id="preview-file-lbl" style="font-size:11px;color:var(--subtext)"></span>
+    </div>
+    <div id="php-bar">
+      <span class="php-tag">PHP</span>
+      <span style="color:var(--subtext);font-size:11px">?</span>
+      <input id="php-qs" type="text" placeholder="GET parametry: klucz=wartosc&amp;klucz2=val" title="Parametry GET ($_GET)">
+      <button class="tb-btn" onclick="runPreview()" style="font-size:11px;padding:3px 10px">&#9654; Wykonaj</button>
+    </div>
+    <div id="php-not-found">
+      <div style="font-size:28px;margin-bottom:8px">&#x1F418;</div>
+      <strong style="color:var(--text);font-size:14px">PHP nie jest zainstalowane</strong><br>
+      Aby uruchamiac pliki .php lokalnie, zainstaluj PHP:<br><br>
+      <a href="https://www.php.net/downloads" target="_blank">php.net/downloads</a> &nbsp;lub&nbsp;
+      <a href="https://www.apachefriends.org/" target="_blank">XAMPP</a> &nbsp;lub&nbsp;
+      <a href="https://laragon.org/" target="_blank">Laragon</a><br><br>
+      <span style="font-size:11px">Po instalacji uruchom serwer ponownie (<code>node server.js</code>)</span>
+    </div>
+    <iframe id="preview-frame" sandbox="allow-scripts allow-forms allow-modals allow-same-origin"></iframe>
+    <div id="console-wrap">
+      <div id="console-hdr">🖥 Konsola <button id="console-clr">Wyczyść</button></div>
+      <div id="console-out"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FLOATING: PDF ══════════════════════════════════════════ -->
+<div class="fp hidden" id="pdf-fp">
+  <div class="fp-title" id="pdf-title">
+    <span class="fp-name">📄 Przeglądarka PDF</span>
+    <button class="fp-ctrl min" id="pdf-min">−</button>
+    <button class="fp-ctrl cls" id="pdf-cls">✕</button>
+  </div>
+  <div class="fp-body" id="pdf-body">
+    <div id="pdf-top">
+      <input type="file" id="pdf-file-inp" accept=".pdf" hidden>
+      <button class="file-btn" onclick="document.getElementById('pdf-file-inp').click()">📂 Otwórz PDF</button>
+      <span id="pdf-fname">Brak pliku</span>
+    </div>
+    <div id="pdf-embed-box"><div class="ph-fp">📄 Załaduj plik PDF</div></div>
+  </div>
+</div>
+
+<!-- ═══ FLOATING: DB ═══════════════════════════════════════════ -->
+<div class="fp hidden" id="db-fp">
+  <div class="fp-title" id="db-title">
+    <span class="fp-name">🗄️ Baza Danych — SQLite</span>
+    <button class="fp-ctrl min" id="db-min">−</button>
+    <button class="fp-ctrl cls" id="db-cls">✕</button>
+  </div>
+  <div class="fp-body" id="db-body">
+    <div id="db-toolbar">
+      <button class="db-btn ok" id="db-new-btn">+ Nowa baza</button>
+      <button class="db-btn" id="db-load-btn">📂 Załaduj .db</button>
+      <button class="db-btn" id="db-save-btn" disabled>💾 Pobierz bazę</button>
+      <input type="file" id="db-file-inp" accept=".db,.sqlite,.sqlite3" hidden>
+    </div>
+    <div id="db-status">Stan: Brak aktywnej bazy</div>
+    <div id="db-tables"></div>
+    <div id="db-sql-wrap"></div>
+    <div id="db-actions">
+      <button class="db-btn ok" id="db-exec-btn">▶ Wykonaj (Ctrl+Enter)</button>
+      <select id="db-tpl-sel">
+        <option value="">— Szablon SQL —</option>
+        <optgroup label="Podstawowe">
+          <option value="create">CREATE TABLE</option>
+          <option value="insert">INSERT INTO</option>
+          <option value="select">SELECT *</option>
+          <option value="update">UPDATE</option>
+          <option value="delete">DELETE</option>
+          <option value="alter">ALTER TABLE</option>
+        </optgroup>
+        <optgroup label="Zaawansowane">
+          <option value="join">SELECT z JOIN</option>
+          <option value="group">GROUP BY</option>
+          <option value="subquery">Podzapytanie</option>
+        </optgroup>
+        <optgroup label="Gotowe schematy">
+          <option value="schema_sklep">Sklep internetowy</option>
+          <option value="schema_szkola">System szkolny</option>
+        </optgroup>
+      </select>
+    </div>
+    <div id="db-result"></div>
+  </div>
+</div>
+
+<!-- ═══ FLOATING: TEMPLATES ════════════════════════════════════ -->
+<div class="fp hidden" id="tpl-fp">
+  <div class="fp-title" id="tpl-title">
+    <span class="fp-name">📝 Szablony</span>
+    <button class="fp-ctrl min" id="tpl-min">−</button>
+    <button class="fp-ctrl cls" id="tpl-cls">✕</button>
+  </div>
+  <div class="fp-body" id="tpl-body">
+    <div style="display:flex;gap:6px;flex-shrink:0">
+      <button class="db-btn ok" onclick="saveAsTemplate()">💾 Zapisz bieżący plik jako szablon</button>
+    </div>
+    <div id="tpl-user-section">
+      <div class="tpl-section-title">Twoje szablony</div>
+      <div class="tpl-grid" id="tpl-user-grid"></div>
+    </div>
+    <div>
+      <div class="tpl-section-title">Wbudowane szablony</div>
+      <div class="tpl-grid" id="tpl-builtin-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CONTEXT MENU ══════════════════════════════════════════ -->
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-rename">✏️ Zmień nazwę</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-delete">🗑 Usuń plik</div>
+</div>
+
+<!-- ═══ DIALOG ════════════════════════════════════════════════ -->
+<div id="dialog-overlay">
+  <div class="dialog-box">
+    <div class="dialog-title" id="dialog-title">Nowy plik</div>
+    <input class="dialog-input" id="dialog-input" type="text" placeholder="">
+    <div class="dialog-err" id="dialog-err"></div>
+    <div class="dialog-actions">
+      <button class="dialog-btn" onclick="closeDialog()">Anuluj</button>
+      <button class="dialog-btn ok" id="dialog-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TOAST ═════════════════════════════════════════════════ -->
+<div id="toast"></div>
+
+<!-- ═══ FABs ══════════════════════════════════════════════════ -->
+<div class="fab-group">
+  <button class="fab" id="fab-tpl"><span class="fab-tip">Szablony</span>📝</button>
+  <button class="fab" id="fab-pdf"><span class="fab-tip">Przeglądarka PDF</span>📄</button>
+  <button class="fab" id="fab-db"><span class="fab-tip">Baza Danych</span>🗄️</button>
+</div>
+
+<!-- ═══ SCRIPTS ═══════════════════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/php/php.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/sql/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closetag.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/html-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/css-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/javascript-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/sql-wasm.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════════
+const state = {
+  user: null,
+  files: new Map(),      // name -> { content, binary, dataUrl, dirty }
+  activeFile: null,
+  autoPreview: true,
+  ctxTarget: null,       // file name for context menu
+};
+
+// ════════════════════════════════════════════════════════════
+//  API HELPERS
+// ════════════════════════════════════════════════════════════
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...opts.headers },
+    ...opts,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Błąd serwera');
+  return data;
+}
+const apiGet  = p => api(p);
+const apiPost = (p, body) => api(p, { method: 'POST', body: JSON.stringify(body) });
+const apiDel  = p => api(p, { method: 'DELETE' });
+
+// ════════════════════════════════════════════════════════════
+//  FILE ICONS / MODES
+// ════════════════════════════════════════════════════════════
+const IMG_EXTS = new Set(['png','jpg','jpeg','gif','svg','webp','ico','bmp']);
+function fileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  if (ext === 'html' || ext === 'htm') return '🌐';
+  if (ext === 'css')  return '🎨';
+  if (ext === 'js')   return '⚡';
+  if (ext === 'php')  return '🐘';
+  if (ext === 'sql')  return '🗄️';
+  if (ext === 'json') return '{}';
+  if (ext === 'xml')  return '📋';
+  if (ext === 'txt')  return '📄';
+  if (IMG_EXTS.has(ext)) return '🖼️';
+  return '📄';
+}
+function cmMode(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { html:'htmlmixed', htm:'htmlmixed', css:'css', js:'javascript',
+    json:'application/json', php:'application/x-httpd-php', sql:'text/x-sql',
+    xml:'application/xml' };
+  return map[ext] || null;
+}
+function isBinary(name) {
+  return IMG_EXTS.has(name.split('.').pop().toLowerCase());
+}
+
+// ════════════════════════════════════════════════════════════
+//  CODEMIRROR
+// ════════════════════════════════════════════════════════════
+// ── Hint helpers ───────────────────────────────────────────
+function getHintOptions(mode) {
+  if (!mode) return null;
+  if (mode === 'htmlmixed' || mode === 'application/x-httpd-php') {
+    return { hint: CodeMirror.hint.html, completeSingle: false };
+  }
+  if (mode === 'css') {
+    return { hint: CodeMirror.hint.css, completeSingle: false };
+  }
+  if (mode === 'javascript' || mode === 'application/json') {
+    return {
+      hint: function(cm) {
+        const jsHint  = CodeMirror.hint.javascript(cm, { completeSingle: false });
+        const anyHint = CodeMirror.hint.anyword ? CodeMirror.hint.anyword(cm, { completeSingle: false }) : null;
+        if (!jsHint && !anyHint) return;
+        if (!jsHint) return anyHint;
+        if (!anyHint) return jsHint;
+        // merge, deduplicate
+        const seen = new Set(jsHint.list.map(i => (typeof i === 'string' ? i : i.text)));
+        const extra = anyHint.list.filter(i => !seen.has(typeof i === 'string' ? i : i.text));
+        return { from: jsHint.from, to: jsHint.to, list: [...jsHint.list, ...extra] };
+      },
+      completeSingle: false,
+    };
+  }
+  if (mode === 'text/x-sql') {
+    return { hint: CodeMirror.hint.sql, completeSingle: false };
+  }
+  // fallback: anyword
+  return CodeMirror.hint.anyword
+    ? { hint: CodeMirror.hint.anyword, completeSingle: false }
+    : null;
+}
+
+// Auto-trigger chars per mode
+const AUTO_HINT_CHARS = {
+  htmlmixed: /[a-zA-Z<\/.]$/,
+  'application/x-httpd-php': /[a-zA-Z<\/.$]$/,
+  css: /[a-zA-Z:#.\-]$/,
+  javascript: /[a-zA-Z.$_]$/,
+  'application/json': /[a-zA-Z"$_]$/,
+  'text/x-sql': /[a-zA-Z_]$/,
+};
+
+const editor = CodeMirror(document.getElementById('editor-container'), {
+  theme: 'dracula', lineNumbers: true, matchBrackets: true,
+  autoCloseBrackets: true, autoCloseTags: true, lineWrapping: false,
+  tabSize: 2, indentWithTabs: false,
+  hintOptions: { completeSingle: false, alignWithWord: true, closeOnUnfocus: true },
+  extraKeys: {
+    'Ctrl-Enter': () => runPreview(),
+    'Ctrl-S': () => saveActive(),
+    'Ctrl-Space': cm => {
+      const opts = getHintOptions(cm.getOption('mode'));
+      if (opts) cm.showHint(opts);
+    },
+    'Tab': cm => {
+      if (cm.state.completionActive) { cm.state.completionActive.pick(); return; }
+      cm.replaceSelection('  ', 'end');
+    },
+    'Enter': cm => {
+      if (cm.state.completionActive) { cm.state.completionActive.pick(); return; }
+      cm.execCommand('newlineAndIndent');
+    },
+  }
+});
+
+let hintDebounce = null;
+editor.on('change', (cm, change) => {
+  if (!state.activeFile) return;
+  const f = state.files.get(state.activeFile);
+  if (!f) return;
+  f.content = editor.getValue();
+  if (!f.dirty) { f.dirty = true; renderFileList(); updateDirtyBadge(); }
+  schedulePreview();
+
+  // Auto-hint: trigger after typing a character (not paste/undo)
+  if (change.origin !== '+input' && change.origin !== '+delete') return;
+  const mode = cm.getOption('mode');
+  const pattern = AUTO_HINT_CHARS[mode];
+  if (!pattern) return;
+  const typed = change.text[0];
+  if (!pattern.test(typed)) return;
+  clearTimeout(hintDebounce);
+  hintDebounce = setTimeout(() => {
+    if (!cm.state.completionActive) {
+      const opts = getHintOptions(mode);
+      if (opts) cm.showHint(opts);
+    }
+  }, 150);
+});
+
+// ════════════════════════════════════════════════════════════
+//  AUTH
+// ════════════════════════════════════════════════════════════
+function showAuthTab(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-reg').classList.toggle('active', tab === 'reg');
+  document.getElementById('form-login').classList.toggle('visible', tab === 'login');
+  document.getElementById('form-reg').classList.toggle('visible', tab === 'reg');
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const el = document.getElementById('login-err');
+  el.textContent = '';
+  try {
+    const d = await apiPost('/api/login', {
+      username: document.getElementById('li-user').value.trim(),
+      password: document.getElementById('li-pass').value,
+    });
+    onLoggedIn(d.username);
+  } catch (err) { el.textContent = err.message; }
+}
+
+async function doRegister(e) {
+  e.preventDefault();
+  const el = document.getElementById('reg-err');
+  el.textContent = '';
+  const pass  = document.getElementById('reg-pass').value;
+  const pass2 = document.getElementById('reg-pass2').value;
+  if (pass !== pass2) { el.textContent = 'Hasła nie są identyczne'; return; }
+  try {
+    const d = await apiPost('/api/register', {
+      username: document.getElementById('reg-user').value.trim(),
+      password: pass,
+    });
+    onLoggedIn(d.username);
+  } catch (err) { el.textContent = err.message; }
+}
+
+async function doLogout() {
+  await apiPost('/api/logout', {}).catch(() => {});
+  state.user = null; state.files.clear(); state.activeFile = null;
+  document.getElementById('auth-overlay').classList.remove('hidden');
+  document.getElementById('file-list').innerHTML = '';
+  editor.setValue('');
+  document.getElementById('active-fname').textContent = '—';
+  showToast('Wylogowano');
+}
+
+async function onLoggedIn(username) {
+  state.user = username;
+  document.getElementById('auth-overlay').classList.add('hidden');
+  document.getElementById('user-name').textContent = username;
+  await loadFiles();
+  await loadUserTemplates();
+  showToast('Witaj, ' + username + '!');
+}
+
+async function checkSession() {
+  try {
+    const d = await apiGet('/api/me');
+    await onLoggedIn(d.username);
+  } catch {
+    // not logged in — show auth modal
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  FILE MANAGEMENT
+// ════════════════════════════════════════════════════════════
+async function loadFiles() {
+  const { files } = await apiGet('/api/files');
+  state.files.clear();
+  for (const { name } of files) {
+    if (isBinary(name)) {
+      state.files.set(name, { binary: true, dataUrl: '/project/' + name, dirty: false });
+    } else {
+      const d = await apiGet('/api/file?name=' + encodeURIComponent(name));
+      state.files.set(name, { content: d.content, binary: false, dirty: false });
+    }
+  }
+  renderFileList();
+  // Open index.html or first html or first file
+  const first = ['index.html', ...[...state.files.keys()].filter(n => /.(html|htm)$/i.test(n)), ...[...state.files.keys()]]
+    .find(n => state.files.has(n));
+  if (first) switchFile(first);
+}
+
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  const sorted = [...state.files.keys()].sort((a,b) => a.localeCompare(b));
+  for (const name of sorted) {
+    const f = state.files.get(name);
+    const div = document.createElement('div');
+    div.className = 'file-item' + (name === state.activeFile ? ' active' : '');
+    div.dataset.name = name;
+    div.innerHTML =
+      `<span class="fi-icon">${fileIcon(name)}</span>` +
+      `<span class="fi-name" title="${name}">${name}</span>` +
+      (f.dirty ? '<span class="fi-dirty">●</span>' : '');
+    div.addEventListener('click', () => switchFile(name));
+    div.addEventListener('contextmenu', e => { e.preventDefault(); showCtxMenu(e, name); });
+    list.appendChild(div);
+  }
+}
+
+function switchFile(name) {
+  if (state.activeFile && state.activeFile !== name) {
+    const f = state.files.get(state.activeFile);
+    if (f && f.dirty && !f.binary) autoSave(state.activeFile);
+  }
+  state.activeFile = name;
+  const f = state.files.get(name);
+  document.getElementById('active-fname').textContent = name;
+  updateDirtyBadge();
+
+  const editorEl   = document.getElementById('editor-container');
+  const imgViewer  = document.getElementById('img-viewer');
+
+  if (f.binary) {
+    editorEl.style.display = 'none';
+    imgViewer.style.display = 'flex';
+    document.getElementById('img-view-el').src = f.dataUrl || '/project/' + name;
+  } else {
+    imgViewer.style.display = 'none';
+    editorEl.style.display = 'block';
+    editor.setOption('mode', cmMode(name));
+    editor.setValue(f.content || '');
+    editor.clearHistory();
+    setTimeout(() => editor.refresh(), 10);
+  }
+  renderFileList();
+  schedulePreview();
+}
+
+function updateDirtyBadge() {
+  const f = state.activeFile ? state.files.get(state.activeFile) : null;
+  const badge = document.getElementById('dirty-badge');
+  if (f && f.dirty) { badge.style.display = 'inline'; }
+  else { badge.style.display = 'none'; }
+}
+
+// Auto-save with debounce
+let saveTimers = {};
+function autoSave(name) {
+  clearTimeout(saveTimers[name]);
+  saveTimers[name] = setTimeout(() => doSave(name), 0);
+}
+
+async function doSave(name) {
+  const f = state.files.get(name);
+  if (!f || f.binary || !f.dirty) return;
+  try {
+    await apiPost('/api/file', { name, content: f.content });
+    f.dirty = false;
+    renderFileList();
+    updateDirtyBadge();
+  } catch (err) { showToast('Błąd zapisu: ' + err.message); }
+}
+
+async function saveActive() {
+  if (state.activeFile) await doSave(state.activeFile);
+}
+
+async function saveAll() {
+  for (const [name, f] of state.files) {
+    if (!f.binary && f.dirty) await doSave(name);
+  }
+  showToast('Wszystkie pliki zapisane');
+}
+
+// ════════════════════════════════════════════════════════════
+//  NEW FILE DIALOG
+// ════════════════════════════════════════════════════════════
+let dialogCallback = null;
+
+function openNewFileDialog() {
+  openDialog('Nowy plik', 'np. strona.html lub funkcje.php', async (name) => {
+    if (!name.includes('.')) { throw new Error('Nazwa musi zawierać rozszerzenie (np. .html .css .php)'); }
+    if (state.files.has(name)) { throw new Error('Plik o tej nazwie już istnieje'); }
+    await apiPost('/api/file', { name, content: '' });
+    state.files.set(name, { content: '', binary: false, dirty: false });
+    renderFileList();
+    switchFile(name);
+    showToast('Utworzono: ' + name);
+  });
+}
+
+function openDialog(title, placeholder, callback) {
+  document.getElementById('dialog-title').textContent = title;
+  document.getElementById('dialog-input').value = '';
+  document.getElementById('dialog-input').placeholder = placeholder;
+  document.getElementById('dialog-err').textContent = '';
+  document.getElementById('dialog-overlay').classList.add('show');
+  dialogCallback = callback;
+  setTimeout(() => document.getElementById('dialog-input').focus(), 50);
+}
+
+function closeDialog() {
+  document.getElementById('dialog-overlay').classList.remove('show');
+  dialogCallback = null;
+}
+
+document.getElementById('dialog-ok').addEventListener('click', async () => {
+  const val = document.getElementById('dialog-input').value.trim();
+  if (!val) { document.getElementById('dialog-err').textContent = 'Pole nie może być puste'; return; }
+  try {
+    await dialogCallback(val);
+    closeDialog();
+  } catch (err) { document.getElementById('dialog-err').textContent = err.message; }
+});
+
+document.getElementById('dialog-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('dialog-ok').click();
+  if (e.key === 'Escape') closeDialog();
+});
+
+// ════════════════════════════════════════════════════════════
+//  CONTEXT MENU (right-click on file)
+// ════════════════════════════════════════════════════════════
+const ctxMenu = document.getElementById('ctx-menu');
+
+function showCtxMenu(e, name) {
+  state.ctxTarget = name;
+  ctxMenu.style.left = e.clientX + 'px';
+  ctxMenu.style.top  = e.clientY + 'px';
+  ctxMenu.style.display = 'block';
+  e.stopPropagation();
+}
+
+document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ctxMenu.style.display = 'none'; });
+
+document.getElementById('ctx-rename').addEventListener('click', () => {
+  const name = state.ctxTarget; if (!name) return;
+  openDialog('Zmień nazwę: ' + name, 'Nowa nazwa pliku', async (newName) => {
+    if (!newName.includes('.')) { throw new Error('Nazwa musi zawierać rozszerzenie'); }
+    if (state.files.has(newName)) { throw new Error('Plik o tej nazwie już istnieje'); }
+    await apiPost('/api/rename', { oldName: name, newName });
+    const f = state.files.get(name);
+    state.files.delete(name);
+    state.files.set(newName, f);
+    if (state.activeFile === name) {
+      state.activeFile = newName;
+      document.getElementById('active-fname').textContent = newName;
+      editor.setOption('mode', cmMode(newName));
+    }
+    renderFileList();
+    showToast('Zmieniono nazwę na: ' + newName);
+  });
+});
+
+document.getElementById('ctx-delete').addEventListener('click', async () => {
+  const name = state.ctxTarget; if (!name) return;
+  if (!confirm('Usunąć plik "' + name + '"? Operacja jest nieodwracalna.')) return;
+  await apiDel('/api/file?name=' + encodeURIComponent(name));
+  state.files.delete(name);
+  if (state.activeFile === name) {
+    state.activeFile = null;
+    editor.setValue('');
+    document.getElementById('active-fname').textContent = '—';
+    const next = state.files.keys().next().value;
+    if (next) switchFile(next);
+  }
+  renderFileList();
+  showToast('Usunięto: ' + name);
+});
+
+// ════════════════════════════════════════════════════════════
+//  IMAGE UPLOAD
+// ════════════════════════════════════════════════════════════
+document.getElementById('img-upload-inp').addEventListener('change', async e => {
+  const files = Array.from(e.target.files);
+  for (const file of files) {
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await apiPost('/api/upload', { name: file.name, dataUrl });
+      state.files.set(file.name, { binary: true, dataUrl: '/project/' + file.name, dirty: false });
+      showToast('Wgrano: ' + file.name);
+    } catch (err) { showToast('Błąd: ' + err.message); }
+  }
+  renderFileList();
+  e.target.value = '';
+});
+
+function readFileAsDataUrl(file) {
+  return new Promise((ok, err) => {
+    const r = new FileReader();
+    r.onload = () => ok(r.result);
+    r.onerror = err;
+    r.readAsDataURL(file);
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  PREVIEW
+// ════════════════════════════════════════════════════════════
+let previewTimer = null;
+
+function schedulePreview() {
+  if (!state.autoPreview) return;
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(runPreview, 500);
+}
+
+function getHtmlFile() {
+  // PHP file takes priority if currently active
+  if (state.activeFile && /\.(php)$/i.test(state.activeFile)) return state.activeFile;
+  if (state.activeFile && /\.(html|htm)$/i.test(state.activeFile)) return state.activeFile;
+  // Fall back: first html, then first php
+  return [...state.files.keys()].find(n => /\.(html|htm)$/i.test(n))
+      || [...state.files.keys()].find(n => /\.php$/i.test(n))
+      || null;
+}
+
+async function runPhpPreview(phpFile) {
+  const qs = (document.getElementById('php-qs').value || '').trim();
+  document.getElementById('preview-frame').srcdoc = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#aaa;background:#1e1e2e;font-size:14px">⏳ Wykonywanie PHP...</div>';
+  try {
+    const data = await apiPost('/api/php-exec', { name: phpFile, queryString: qs });
+    if (data.phpNotFound) {
+      document.getElementById('php-not-found').style.display = 'block';
+      document.getElementById('preview-frame').style.display = 'none';
+      return;
+    }
+    document.getElementById('php-not-found').style.display = 'none';
+    document.getElementById('preview-frame').style.display = '';
+    let html = data.output || '';
+    // Remove PHP headers (Content-Type: etc) if present at top
+    html = html.replace(/^(\w[\w-]*:\s*[^\r\n]+\r?\n)+\r?\n/, '');
+    // Add console patch
+    const consolePatch =
+      '<scr' + 'ipt>' +
+      '(function(){function p(t,a){window.parent.postMessage({__cm__:true,type:t,args:a.map(function(x){try{return typeof x==="object"?JSON.stringify(x,null,2):String(x);}catch(e){return String(x);}})}, "*");}' +
+      'var L=console.log,W=console.warn,E=console.error;' +
+      'console.log=function(){p("log",Array.from(arguments));L.apply(console,arguments);};' +
+      'console.error=function(){p("error",Array.from(arguments));E.apply(console,arguments);};' +
+      '})()' +
+      '<' + '/scr' + 'ipt>';
+    if (/<\/head>/i.test(html)) html = html.replace('</head>', consolePatch + '</head>');
+    else html = consolePatch + html;
+    // Remove any existing php-err-box
+    document.getElementById('preview-panel').querySelectorAll('.php-err-box').forEach(e => e.remove());
+    if (data.errors && data.errors.trim()) {
+      const errBox = document.createElement('div');
+      errBox.className = 'php-err-box';
+      errBox.textContent = data.errors.trim();
+      document.getElementById('preview-frame').insertAdjacentElement('afterend', errBox);
+    }
+    document.getElementById('preview-frame').srcdoc = html;
+    document.getElementById('preview-file-lbl').textContent = phpFile + (qs ? '?' + qs : '');
+  } catch(err) {
+    showToast('Блад PHP: ' + err.message);
+  }
+}
+
+function runPreview() {
+  const file = getHtmlFile();
+  // Clear PHP error box
+  document.getElementById('preview-panel').querySelectorAll('.php-err-box').forEach(e => e.remove());
+
+  if (!file) {
+    document.getElementById('php-bar').classList.remove('show');
+    document.getElementById('php-not-found').style.display = 'none';
+    document.getElementById('preview-frame').style.display = '';
+    document.getElementById('preview-frame').srcdoc = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#888;background:#1e1e2e;font-size:14px">Brak pliku HTML/PHP w projekcie</div>';
+    return;
+  }
+
+  const isPhp = /\.php$/i.test(file);
+  document.getElementById('php-bar').classList.toggle('show', isPhp);
+  if (isPhp) {
+    document.getElementById('preview-frame').style.display = '';
+    runPhpPreview(file);
+    return;
+  }
+
+  // HTML preview
+  document.getElementById('php-not-found').style.display = 'none';
+  document.getElementById('preview-frame').style.display = '';
+  const srcdoc = buildSrcdoc(file);
+  if (srcdoc !== null) {
+    document.getElementById('preview-frame').srcdoc = srcdoc;
+    document.getElementById('preview-file-lbl').textContent = file;
+  }
+}
+
+function buildSrcdoc(htmlName) {
+  const f = state.files.get(htmlName);
+  if (!f || f.binary) return null;
+  let html = f.content || '';
+
+  // Inline stylesheets from project files
+  html = html.replace(/<link([^>]*)href=["']([^"']+)["']([^>]*)>/gi, (m, before, href, after) => {
+    if (!/stylesheet/i.test(before + after)) return m;
+    if (href.startsWith('http') || href.startsWith('//') || href.startsWith('data:')) return m;
+    const lf = state.files.get(href);
+    return lf && !lf.binary ? `<style>/* ${href} */
+${lf.content || ''}
+</style>` : m;
+  });
+
+  // Inline scripts from project files
+  html = html.replace(/<script([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi, (m, a, src, b) => {
+    if (src.startsWith('http') || src.startsWith('//') || src.startsWith('data:')) return m;
+    const sf = state.files.get(src);
+    return sf && !sf.binary ? `<script${a}>${sf.content || ''}<\/script>` : m;
+  });
+
+  // Base tag so relative image paths load from /project/
+  const base = `<base href="${window.location.origin}/project/">`;
+  if (/<head(\s[^>]*)?>/i.test(html)) html = html.replace(/<head(\s[^>]*)?>/i, `<head$1>\n  ${base}`);
+  else html = base + html;
+
+  // Console capture injection — string concat, no template-literal escape issues
+  const consolePatch =
+    '<scr' + 'ipt>' +
+    '(function(){' +
+    'function p(t,a){window.parent.postMessage({__cm__:true,type:t,args:a.map(function(x){' +
+    'try{return typeof x==="object"?JSON.stringify(x,null,2):String(x);}' +
+    'catch(e){return String(x);}})}, "*");}' +
+    'var L=console.log,W=console.warn,E=console.error;' +
+    'console.log=function(){p("log",Array.from(arguments));L.apply(console,arguments);};' +
+    'console.warn=function(){p("warn",Array.from(arguments));W.apply(console,arguments);};' +
+    'console.error=function(){p("error",Array.from(arguments));E.apply(console,arguments);};' +
+    'window.onerror=function(m,s,l){p("error",["Blad: "+m+(l?" (linia "+l+")":"")]);return false;};' +
+    '})()' +
+    '<' + '/scr' + 'ipt>'
+  if (/<\/head>/i.test(html)) html = html.replace('</head>', consolePatch + '</head>');
+  else html = consolePatch + html;
+
+  return html;
+}
+
+function openFullPreview() {
+  const file = getHtmlFile();
+  if (!file) { showToast('Brak pliku HTML/PHP'); return; }
+  saveAll().then(() => {
+    if (/\.php$/i.test(file)) {
+      // PHP full-screen: use a data URL of the PHP output
+      runPhpPreview(file).then ? showToast('Pełny ekran PHP — skorzystaj z podglądu') : null;
+      showToast('PHP: użyj podglądu wbudowanego lub zainstaluj XAMPP');
+    } else {
+      window.open('/project/' + file, '_blank');
+    }
+  });
+}
+
+window.addEventListener('message', e => {
+  if (!e.data || !e.data.__cm__) return;
+  addConsoleLine(e.data.type, e.data.args.join(' '));
+});
+
+// ════════════════════════════════════════════════════════════
+//  CONSOLE
+// ════════════════════════════════════════════════════════════
+const consoleOut = document.getElementById('console-out');
+
+function addConsoleLine(type, text) {
+  const d = document.createElement('div');
+  d.className = 'cl ' + type;
+  d.textContent = (type === 'error' ? '❌ ' : type === 'warn' ? '⚠ ' : '› ') + text;
+  consoleOut.appendChild(d);
+  consoleOut.scrollTop = consoleOut.scrollHeight;
+}
+
+document.getElementById('btn-console').addEventListener('click', () => {
+  document.getElementById('console-wrap').classList.toggle('open');
+});
+document.getElementById('console-clr').addEventListener('click', () => { consoleOut.innerHTML = ''; });
+
+// ════════════════════════════════════════════════════════════
+//  AUTO-PREVIEW TOGGLE
+// ════════════════════════════════════════════════════════════
+document.getElementById('auto-track').addEventListener('click', function () {
+  state.autoPreview = !state.autoPreview;
+  this.classList.toggle('on', state.autoPreview);
+});
+
+// ════════════════════════════════════════════════════════════
+//  ZIP EXPORT
+// ════════════════════════════════════════════════════════════
+async function exportZip() {
+  try {
+    showToast('Tworzę ZIP...');
+    const { files } = await apiGet('/api/export');
+    const zip = new JSZip();
+    files.forEach(f => {
+      if (f.binary) zip.file(f.name, f.content, { base64: true });
+      else zip.file(f.name, f.content);
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: 'projekt.zip',
+    });
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('ZIP pobrany!');
+  } catch (err) { showToast('Błąd ZIP: ' + err.message); }
+}
+
+// ════════════════════════════════════════════════════════════
+//  TEMPLATES
+// ════════════════════════════════════════════════════════════
+const BUILTIN_TEMPLATES = [
+  { name: 'Podstawowa strona HTML', lang: 'html', content:
+`<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moja strona</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>Nagłówek</h1></header>
+  <main><p>Treść strony...</p></main>
+  <footer>&copy; 2024</footer>
+  <script src="script.js"><\/script>
+</body>
+</html>` },
+  { name: 'Formularz HTML', lang: 'html', content:
+`<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Formularz</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f0f4f8;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}
+    form{background:white;padding:32px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);width:400px;display:flex;flex-direction:column;gap:14px}
+    label{font-size:13px;font-weight:bold;color:#475569}
+    input,textarea,select{width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;box-sizing:border-box}
+    button{padding:11px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:15px;cursor:pointer}
+    button:hover{background:#1d4ed8}
+  </style>
+</head>
+<body>
+  <form action="#" method="post">
+    <h2>Formularz kontaktowy</h2>
+    <div><label for="imie">Imię i nazwisko</label><input type="text" id="imie" name="imie" required></div>
+    <div><label for="email">E-mail</label><input type="email" id="email" name="email" required></div>
+    <div><label for="temat">Temat</label>
+      <select id="temat" name="temat"><option value="">-- wybierz --</option><option>Pytanie</option><option>Inne</option></select>
+    </div>
+    <div><label for="msg">Wiadomość</label><textarea id="msg" name="msg" rows="4"></textarea></div>
+    <button type="submit">Wyślij</button>
+  </form>
+</body>
+</html>` },
+  { name: 'Tabela z danymi', lang: 'html', content:
+`<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8"><title>Tabela</title>
+  <style>
+    body{font-family:Arial;padding:24px;background:#f8fafc}
+    table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+    thead{background:#2563eb;color:white}
+    th,td{padding:10px 16px;text-align:left}
+    tbody tr:nth-child(even){background:#f1f5f9}
+    tbody tr:hover{background:#dbeafe}
+    td{border-bottom:1px solid #e2e8f0}
+  </style>
+</head>
+<body>
+  <h2>Tabela uczniów</h2>
+  <table>
+    <thead><tr><th>Lp.</th><th>Imię</th><th>Klasa</th><th>Ocena</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Anna Kowalska</td><td>3A</td><td>5</td></tr>
+      <tr><td>2</td><td>Piotr Nowak</td><td>3A</td><td>4</td></tr>
+      <tr><td>3</td><td>Marta Wiśniewska</td><td>3B</td><td>5</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>` },
+  { name: 'Layout: Nav + Sidebar', lang: 'html', content:
+`<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8"><title>Layout</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif}
+    nav{background:#1e293b;display:flex;align-items:center;padding:0 20px;gap:4px}
+    .logo{color:#38bdf8;font-weight:bold;font-size:18px;padding:14px 0;margin-right:auto}
+    nav a{color:#94a3b8;text-decoration:none;padding:16px 12px;transition:color .2s}
+    nav a:hover,nav a.active{color:white}
+    .layout{display:flex;min-height:calc(100vh - 52px)}
+    aside{width:200px;background:#f1f5f9;padding:16px;border-right:1px solid #e2e8f0}
+    aside ul{list-style:none}
+    aside li a{display:block;padding:8px 10px;color:#334155;text-decoration:none;border-radius:5px}
+    aside li a:hover{background:#e2e8f0}
+    main{flex:1;padding:28px}
+  </style>
+</head>
+<body>
+  <nav>
+    <span class="logo">Logo</span>
+    <a href="#" class="active">Główna</a>
+    <a href="#">O nas</a>
+    <a href="#">Kontakt</a>
+  </nav>
+  <div class="layout">
+    <aside>
+      <ul>
+        <li><a href="#">📁 Kategoria 1</a></li>
+        <li><a href="#">📁 Kategoria 2</a></li>
+      </ul>
+    </aside>
+    <main>
+      <h1>Treść strony</h1>
+      <p>Lorem ipsum dolor sit amet.</p>
+    </main>
+  </div>
+</body>
+</html>` },
+  { name: 'Galeria Flexbox', lang: 'html', content:
+`<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8"><title>Galeria</title>
+  <style>
+    body{font-family:Arial;background:#0f172a;color:white;margin:0;padding:24px}
+    h1{text-align:center;margin-bottom:24px}
+    .gallery{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
+    .card{width:180px;background:#1e293b;border-radius:10px;overflow:hidden;cursor:pointer;transition:transform .2s}
+    .card:hover{transform:translateY(-4px)}
+    .card-img{height:120px;display:flex;align-items:center;justify-content:center;font-size:48px;background:linear-gradient(135deg,#3b82f6,#8b5cf6)}
+    .card-body{padding:12px}
+    .card-title{font-weight:bold;font-size:14px}
+  </style>
+</head>
+<body>
+  <h1>Galeria</h1>
+  <div class="gallery">
+    <div class="card"><div class="card-img">🌅</div><div class="card-body"><div class="card-title">Zachód słońca</div></div></div>
+    <div class="card"><div class="card-img">🏔</div><div class="card-body"><div class="card-title">Góry</div></div></div>
+    <div class="card"><div class="card-img">🌊</div><div class="card-body"><div class="card-title">Morze</div></div></div>
+    <div class="card"><div class="card-img">🌿</div><div class="card-body"><div class="card-title">Las</div></div></div>
+  </div>
+</body>
+</html>` },
+  { name: 'CSS Grid – 3 kolumny', lang: 'html', content:
+`<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8"><title>CSS Grid</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial;background:#f8fafc;padding:20px}
+    h1{text-align:center;margin-bottom:20px;color:#1e293b}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+    @media(max-width:600px){.grid{grid-template-columns:1fr}}
+    .box{background:white;border-radius:10px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.08);border-top:4px solid var(--c)}
+    .box h3{color:var(--c);margin-bottom:8px}
+    .box p{color:#64748b;font-size:14px;line-height:1.5}
+  </style>
+</head>
+<body>
+  <h1>CSS Grid</h1>
+  <div class="grid">
+    <div class="box" style="--c:#2563eb"><h3>Kol. 1</h3><p>Treść pierwszej kolumny.</p></div>
+    <div class="box" style="--c:#7c3aed"><h3>Kol. 2</h3><p>Treść drugiej kolumny.</p></div>
+    <div class="box" style="--c:#059669"><h3>Kol. 3</h3><p>Treść trzeciej kolumny.</p></div>
+  </div>
+</body>
+</html>` },
+  { name: 'Plik PHP – podstawowy', lang: 'php', content:
+`<?php
+// Plik PHP – przykład podstawowy
+$tytul = "Moja strona PHP";
+$lista = ["Element 1", "Element 2", "Element 3"];
+?>
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title><?php echo $tytul; ?></title>
+</head>
+<body>
+  <h1><?php echo $tytul; ?></h1>
+  <ul>
+    <?php foreach ($lista as $el): ?>
+      <li><?php echo htmlspecialchars($el); ?></li>
+    <?php endforeach; ?>
+  </ul>
+</body>
+</html>` },
+  { name: 'PHP – formularz POST', lang: 'php', content:
+`<?php
+$blad = '';
+$sukces = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $imie = htmlspecialchars(trim($_POST['imie'] ?? ''));
+    $email = filter_var(trim($_POST['email'] ?? ''), FILTER_SANITIZE_EMAIL);
+    if (empty($imie)) {
+        $blad = 'Podaj imię.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $blad = 'Nieprawidłowy adres e-mail.';
+    } else {
+        $sukces = "Dziękujemy, \${imie}! Wiadomość została wysłana.";
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="pl">
+<head><meta charset="UTF-8"><title>Formularz PHP</title></head>
+<body>
+  <h1>Formularz PHP</h1>
+  <?php if ($blad): ?><p style="color:red"><?php echo $blad; ?></p><?php endif; ?>
+  <?php if ($sukces): ?><p style="color:green"><?php echo $sukces; ?></p><?php endif; ?>
+  <form method="post" action="">
+    <label>Imię: <input type="text" name="imie" value="<?php echo htmlspecialchars($_POST['imie'] ?? ''); ?>"></label><br><br>
+    <label>E-mail: <input type="email" name="email" value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>"></label><br><br>
+    <button type="submit">Wyślij</button>
+  </form>
+</body>
+</html>` },
+  { name: 'CSS – zmienne i dark mode', lang: 'css', content:
+`:root {
+  --color-bg:      #ffffff;
+  --color-surface: #f1f5f9;
+  --color-text:    #1e293b;
+  --color-primary: #2563eb;
+  --color-border:  #e2e8f0;
+}
+[data-theme="dark"] {
+  --color-bg:      #0f172a;
+  --color-surface: #1e293b;
+  --color-text:    #e2e8f0;
+  --color-primary: #60a5fa;
+  --color-border:  #334155;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; transition: background .3s, color .3s; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: Arial, sans-serif;
+}` },
+  { name: 'JavaScript – podstawy DOM', lang: 'js', content:
+`// Manipulacja DOM
+document.addEventListener('DOMContentLoaded', () => {
+  // Pobierz element
+  const btn = document.getElementById('myBtn');
+  const output = document.getElementById('output');
+
+  // Obsługa kliknięcia
+  btn.addEventListener('click', () => {
+    const nowy = document.createElement('p');
+    nowy.textContent = 'Kliknięto o: ' + new Date().toLocaleTimeString();
+    output.appendChild(nowy);
+  });
+});
+
+// Walidacja formularza
+function waliduj(e) {
+  e.preventDefault();
+  const pole = document.querySelector('#formularz input[name="imie"]');
+  if (!pole.value.trim()) {
+    alert('Podaj imię!');
+    return false;
+  }
+  alert('Formularz OK: ' + pole.value);
+}` },
+];
+
+let userTemplates = [];
+
+async function loadUserTemplates() {
+  try {
+    const { templates } = await apiGet('/api/templates');
+    userTemplates = templates;
+    renderTemplatesPanel();
+  } catch { userTemplates = []; }
+}
+
+function renderTemplatesPanel() {
+  const userGrid    = document.getElementById('tpl-user-grid');
+  const builtinGrid = document.getElementById('tpl-builtin-grid');
+
+  userGrid.innerHTML = '';
+  if (!userTemplates.length) {
+    userGrid.innerHTML = '<div style="color:var(--subtext);font-size:12px;grid-column:span 2">Brak zapisanych szablonów</div>';
+  } else {
+    userTemplates.forEach((t, i) => {
+      const card = document.createElement('div');
+      card.className = 'tpl-card';
+      card.innerHTML = `<div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${esc(t.lang||'?')}</div>`;
+      const del = document.createElement('button');
+      del.className = 'tpl-del'; del.textContent = '🗑';
+      del.title = 'Usuń szablon';
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Usunąć szablon "' + t.name + '"?')) return;
+        await apiDel('/api/templates/' + encodeURIComponent(t.name));
+        userTemplates.splice(i, 1);
+        renderTemplatesPanel();
+        showToast('Usunięto szablon');
+      });
+      card.appendChild(del);
+      card.addEventListener('click', () => loadTemplate(t.content));
+      userGrid.appendChild(card);
+    });
+  }
+
+  builtinGrid.innerHTML = '';
+  BUILTIN_TEMPLATES.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'tpl-card';
+    card.innerHTML = `<div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${esc(t.lang)}</div>`;
+    card.addEventListener('click', () => loadTemplate(t.content));
+    builtinGrid.appendChild(card);
+  });
+}
+
+function loadTemplate(content) {
+  if (!state.activeFile) { showToast('Najpierw otwórz plik'); return; }
+  const current = editor.getValue();
+  if (current.trim() && !confirm('Zastąpić zawartość bieżącego pliku szablonem?')) return;
+  editor.setValue(content);
+  const f = state.files.get(state.activeFile);
+  if (f) { f.content = content; f.dirty = true; }
+  renderFileList();
+  updateDirtyBadge();
+  runPreview();
+  showToast('Szablon załadowany');
+}
+
+async function saveAsTemplate() {
+  if (!state.activeFile) { showToast('Brak aktywnego pliku'); return; }
+  const ext  = state.activeFile.split('.').pop().toLowerCase();
+  const name = prompt('Nazwa szablonu:', state.activeFile.replace(/.[^.]+$/, '') + ' – ' + new Date().toLocaleDateString());
+  if (!name) return;
+  const content = editor.getValue();
+  await apiPost('/api/templates', { name, content, lang: ext });
+  await loadUserTemplates();
+  showToast('Szablon zapisany!');
+}
+
+// ════════════════════════════════════════════════════════════
+//  DATABASE (sql.js)
+// ════════════════════════════════════════════════════════════
+const SQL_TEMPLATES = {
+  create: `CREATE TABLE uzytkownicy (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  imie    TEXT    NOT NULL,
+  email   TEXT    UNIQUE NOT NULL,
+  wiek    INTEGER,
+  rola    TEXT    DEFAULT 'uzytkownik'
+);`,
+  insert: `INSERT INTO uzytkownicy (imie, email, wiek)
+VALUES ('Jan Kowalski', 'jan@ex.pl', 25),
+       ('Anna Nowak',   'anna@ex.pl', 30);`,
+  select: `SELECT * FROM uzytkownicy;`,
+  update: `UPDATE uzytkownicy SET wiek = 26 WHERE id = 1;`,
+  delete: `DELETE FROM uzytkownicy WHERE id = 3;`,
+  alter:  `ALTER TABLE uzytkownicy ADD COLUMN telefon TEXT;`,
+  join:   `SELECT u.imie, u.email, z.produkt, z.kwota
+FROM uzytkownicy u
+INNER JOIN zamowienia z ON u.id = z.uzytkownik_id
+ORDER BY z.kwota DESC;`,
+  group:  `SELECT rola, COUNT(*) AS liczba, AVG(wiek) AS sredni_wiek
+FROM uzytkownicy
+GROUP BY rola;`,
+  subquery: `SELECT imie, wiek FROM uzytkownicy
+WHERE wiek > (SELECT AVG(wiek) FROM uzytkownicy);`,
+  schema_sklep: `CREATE TABLE kategorie (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL);
+CREATE TABLE produkty (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL, cena REAL NOT NULL, ilosc INTEGER DEFAULT 0, kat_id INTEGER REFERENCES kategorie(id));
+CREATE TABLE klienci (id INTEGER PRIMARY KEY AUTOINCREMENT, imie TEXT NOT NULL, email TEXT UNIQUE NOT NULL);
+CREATE TABLE zamowienia (id INTEGER PRIMARY KEY AUTOINCREMENT, klient_id INTEGER REFERENCES klienci(id), data TEXT DEFAULT (datetime('now')));
+INSERT INTO kategorie (nazwa) VALUES ('Elektronika'),('Odzież');
+INSERT INTO produkty (nazwa,cena,ilosc,kat_id) VALUES ('Laptop',2999.99,5,1),('Koszulka',79.99,20,2);
+INSERT INTO klienci (imie,email) VALUES ('Jan Kowalski','jan@ex.pl'),('Anna Nowak','anna@ex.pl');`,
+  schema_szkola: `CREATE TABLE klasy (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT NOT NULL, rok INTEGER);
+CREATE TABLE uczniowie (id INTEGER PRIMARY KEY AUTOINCREMENT, imie TEXT, nazwisko TEXT, klasa_id INTEGER REFERENCES klasy(id));
+CREATE TABLE przedmioty (id INTEGER PRIMARY KEY AUTOINCREMENT, nazwa TEXT, nauczyciel TEXT);
+CREATE TABLE oceny (id INTEGER PRIMARY KEY AUTOINCREMENT, uczen_id INTEGER REFERENCES uczniowie(id), przedmiot_id INTEGER REFERENCES przedmioty(id), ocena INTEGER CHECK(ocena BETWEEN 1 AND 6));
+INSERT INTO klasy (nazwa,rok) VALUES ('3A',2024),('3B',2024);
+INSERT INTO uczniowie (imie,nazwisko,klasa_id) VALUES ('Anna','Kowalska',1),('Piotr','Nowak',1),('Marta','Wiśniewska',2);
+INSERT INTO przedmioty (nazwa,nauczyciel) VALUES ('Informatyka','mgr Kowicki'),('Matematyka','mgr Nowacka');
+INSERT INTO oceny (uczen_id,przedmiot_id,ocena) VALUES (1,1,5),(1,2,4),(2,1,4),(2,2,3),(3,1,5),(3,2,5);`,
+};
+
+let SQL = null, sqlDb = null;
+initSqlJs({ locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.2/${f}` })
+  .then(s => { SQL = s; setDbStatus('SQL.js gotowy ✓', 'ok'); })
+  .catch(e => setDbStatus('Błąd SQL.js: ' + e.message, 'err'));
+
+function setDbStatus(msg, cls = '') {
+  const el = document.getElementById('db-status');
+  el.textContent = 'Stan: ' + msg;
+  el.className = cls;
+}
+
+function refreshTables() {
+  const el = document.getElementById('db-tables');
+  if (!sqlDb) { el.innerHTML = ''; return; }
+  try {
+    const res = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+    if (!res.length || !res[0].values.length) { el.innerHTML = '<span style="color:var(--subtext);font-size:12px">Brak tabel</span>'; return; }
+    el.innerHTML = res[0].values.map(r => `<span class="tbl-chip" onclick="dbQuickSel('${r[0]}')">${r[0]}</span>`).join('');
+  } catch(_) {}
+}
+
+function dbQuickSel(t) { sqlEditor.setValue('SELECT * FROM `' + t + '` LIMIT 50;'); sqlEditor.focus(); }
+
+function esc(s) { return String(s==null?'NULL':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showDbResult(data) {
+  const el = document.getElementById('db-result');
+  if (typeof data === 'string') { el.innerHTML = `<div class="res-msg ${data.startsWith('✅')?'ok':'err'}">${esc(data)}</div>`; return; }
+  if (!data || !data.length || !data[0].values.length) { el.innerHTML = '<div class="res-msg ok">✅ Wykonano — brak wierszy</div>'; return; }
+  const { columns, values } = data[0];
+  let html = `<table class="rt"><thead><tr>${columns.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>`;
+  values.forEach(r => { html += '<tr>' + r.map(cell => `<td title="${esc(cell)}">${esc(cell)}</td>`).join('') + '</tr>'; });
+  html += `</tbody></table><div class="row-count">${values.length} wierszy</div>`;
+  el.innerHTML = html;
+}
+
+document.getElementById('db-new-btn').addEventListener('click', () => {
+  if (!SQL) return setDbStatus('SQL.js jeszcze się ładuje...', 'err');
+  if (sqlDb) sqlDb.close();
+  sqlDb = new SQL.Database();
+  setDbStatus('Nowa baza aktywna ✓', 'ok');
+  document.getElementById('db-save-btn').disabled = false;
+  document.getElementById('db-result').innerHTML = '';
+  refreshTables();
+});
+
+document.getElementById('db-load-btn').addEventListener('click', () => document.getElementById('db-file-inp').click());
+document.getElementById('db-file-inp').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  if (!SQL) return setDbStatus('SQL.js jeszcze się ładuje...', 'err');
+  try {
+    const buf = await file.arrayBuffer();
+    if (sqlDb) sqlDb.close();
+    sqlDb = new SQL.Database(new Uint8Array(buf));
+    setDbStatus('Załadowano: ' + file.name + ' ✓', 'ok');
+    document.getElementById('db-save-btn').disabled = false;
+    document.getElementById('db-result').innerHTML = '';
+    refreshTables();
+  } catch(err) { setDbStatus('Błąd: ' + err.message, 'err'); }
+});
+
+document.getElementById('db-save-btn').addEventListener('click', () => {
+  if (!sqlDb) return;
+  const data = sqlDb.export();
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([data], { type: 'application/octet-stream' })),
+    download: 'baza.db'
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+});
+
+function executeSQL() {
+  if (!sqlDb) { setDbStatus('Brak aktywnej bazy! Utwórz lub załaduj bazę.', 'err'); return; }
+  const sql = sqlEditor.getValue().trim(); if (!sql) return;
+  try {
+    const res = sqlDb.exec(sql);
+    const isSelect = /^(SELECT|PRAGMA|WITH|EXPLAIN)/i.test(sql.trimStart());
+    showDbResult(isSelect ? res : '✅ Zapytanie wykonane pomyślnie');
+    if (!isSelect) refreshTables();
+  } catch(e) { showDbResult('❌ Błąd SQL: ' + e.message); }
+}
+
+document.getElementById('db-exec-btn').addEventListener('click', executeSQL);
+document.getElementById('db-tpl-sel').addEventListener('change', function () {
+  const tpl = SQL_TEMPLATES[this.value]; if (!tpl) return;
+  sqlEditor.setValue(tpl); sqlEditor.focus(); this.value = '';
+});
+
+const sqlEditor = CodeMirror(document.getElementById('db-sql-wrap'), {
+  theme:'dracula', mode:'text/x-sql', lineNumbers:true,
+  matchBrackets:true, autoCloseBrackets:true, lineWrapping:true, tabSize:2,
+  value:"-- Wpisz zapytanie SQL\nSELECT * FROM sqlite_master WHERE type='table';",
+  extraKeys:{ 'Ctrl-Enter': () => executeSQL(), 'Tab': cm => cm.replaceSelection('  ','end') }
+});
+
+// ════════════════════════════════════════════════════════════
+//  PDF VIEWER
+// ════════════════════════════════════════════════════════════
+document.getElementById('pdf-file-inp').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  document.getElementById('pdf-fname').textContent = file.name;
+  const url = URL.createObjectURL(file);
+  document.getElementById('pdf-embed-box').innerHTML = `<embed src="${url}#toolbar=1&navpanes=0" type="application/pdf">`;
+});
+
+// ════════════════════════════════════════════════════════════
+//  RESIZABLE SPLIT PANE
+// ════════════════════════════════════════════════════════════
+const resizer   = document.getElementById('resizer');
+const editorPan = document.getElementById('editor-panel');
+let resizing = false;
+
+resizer.addEventListener('mousedown', () => {
+  resizing = true; resizer.classList.add('drag');
+  document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+  document.getElementById('preview-frame').style.pointerEvents = 'none';
+});
+document.addEventListener('mousemove', e => {
+  if (!resizing) return;
+  const ws  = document.getElementById('workspace').getBoundingClientRect();
+  const sidW = document.getElementById('file-sidebar').offsetWidth;
+  const pct = Math.min(Math.max((e.clientX - ws.left - sidW) / (ws.width - sidW) * 100, 15), 85);
+  editorPan.style.flex = 'none'; editorPan.style.width = pct * (ws.width - sidW) / 100 + 'px';
+});
+document.addEventListener('mouseup', () => {
+  if (!resizing) return;
+  resizing = false; resizer.classList.remove('drag');
+  document.body.style.cursor = ''; document.body.style.userSelect = '';
+  document.getElementById('preview-frame').style.pointerEvents = '';
+  editor.refresh(); sqlEditor.refresh();
+});
+
+// ════════════════════════════════════════════════════════════
+//  DRAGGABLE FLOATING PANELS
+// ════════════════════════════════════════════════════════════
+function makeDraggable(panelId, titleId) {
+  const panel = document.getElementById(panelId);
+  const title = document.getElementById(titleId);
+  let drag = false, ox, oy, pl, pt;
+  title.addEventListener('mousedown', e => {
+    if (e.target.closest('.fp-ctrl')) return;
+    drag = true; ox = e.clientX; oy = e.clientY;
+    const r = panel.getBoundingClientRect(); pl = r.left; pt = r.top;
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!drag) return;
+    panel.style.left = Math.max(0, pl + e.clientX - ox) + 'px';
+    panel.style.top  = Math.max(0, pt + e.clientY - oy) + 'px';
+    panel.style.right = 'auto'; panel.style.bottom = 'auto';
+  });
+  document.addEventListener('mouseup', () => { drag = false; document.body.style.userSelect = ''; });
+}
+makeDraggable('pdf-fp', 'pdf-title');
+makeDraggable('db-fp',  'db-title');
+makeDraggable('tpl-fp', 'tpl-title');
+
+function setupFpControls(fpId, bodyId, minId, clsId, fabId) {
+  const fp   = document.getElementById(fpId);
+  const body = document.getElementById(bodyId);
+  document.getElementById(minId).addEventListener('click', () => {
+    body.classList.toggle('mini');
+    document.getElementById(minId).textContent = body.classList.contains('mini') ? '+' : '−';
+  });
+  document.getElementById(clsId).addEventListener('click', () => {
+    fp.classList.add('hidden');
+    if (fabId) document.getElementById(fabId).classList.remove('active');
+  });
+}
+setupFpControls('pdf-fp','pdf-body','pdf-min','pdf-cls','fab-pdf');
+setupFpControls('db-fp', 'db-body', 'db-min', 'db-cls', 'fab-db');
+setupFpControls('tpl-fp','tpl-body','tpl-min','tpl-cls','fab-tpl');
+
+function toggleFab(fpId, fabId, onShow) {
+  const fp  = document.getElementById(fpId);
+  const fab = document.getElementById(fabId);
+  fp.classList.toggle('hidden');
+  fab.classList.toggle('active', !fp.classList.contains('hidden'));
+  if (!fp.classList.contains('hidden') && onShow) onShow();
+}
+document.getElementById('fab-pdf').addEventListener('click', () => toggleFab('pdf-fp','fab-pdf'));
+document.getElementById('fab-db' ).addEventListener('click', () => toggleFab('db-fp', 'fab-db', () => setTimeout(() => sqlEditor.refresh(), 30)));
+document.getElementById('fab-tpl').addEventListener('click', () => toggleFab('tpl-fp','fab-tpl'));
+
+// ════════════════════════════════════════════════════════════
+//  TOAST
+// ════════════════════════════════════════════════════════════
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ════════════════════════════════════════════════════════════
+//  KEYBOARD SHORTCUTS
+// ════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey && e.key === '`') { e.preventDefault(); document.getElementById('console-wrap').classList.toggle('open'); }
+  if (e.key === 'Escape') { ctxMenu.style.display = 'none'; document.getElementById('tpl-dropdown') && document.getElementById('tpl-dropdown').classList.remove('open'); }
+});
+
+// ════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════
+renderTemplatesPanel();
+checkSession();
+</script>
+</body>
+</html>
