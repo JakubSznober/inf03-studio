@@ -442,8 +442,8 @@ a { color: var(--primary); }
     <div id="sidebar-header">
       <span class="sidebar-title"><i class="bx bx-folder"></i> Projekt</span>
       <button class="icon-btn" id="btn-new-file" title="Nowy plik" onclick="openNewFileDialog()"><i class="bx bx-plus"></i></button>
-      <button class="icon-btn" title="Wgraj obraz" onclick="document.getElementById('img-upload-inp').click()"><i class="bx bx-image-add"></i></button>
-      <input type="file" id="img-upload-inp" accept="image/*" hidden multiple>
+      <button class="icon-btn" title="Wgraj plik (obraz, PDF...)" onclick="document.getElementById('img-upload-inp').click()"><i class="bx bx-image-add"></i></button>
+      <input type="file" id="img-upload-inp" accept="image/*,.pdf" hidden multiple>
     </div>
     <div id="file-list"></div>
     <div id="sidebar-footer">
@@ -660,7 +660,7 @@ const apiDel  = p => api(p, { method: 'DELETE' });
 // ════════════════════════════════════════════════════════════
 //  FILE ICONS / MODES
 // ════════════════════════════════════════════════════════════
-const IMG_EXTS = new Set(['png','jpg','jpeg','gif','svg','webp','ico','bmp']);
+const IMG_EXTS = new Set(['png','jpg','jpeg','gif','svg','webp','ico','bmp','pdf','wasm']);
 function fileIcon(name) {
   const ext = name.split('.').pop().toLowerCase();
   if (ext === 'html' || ext === 'htm') return '<i class="bx bx-world"></i>';
@@ -1570,7 +1570,9 @@ function renderTemplatesPanel() {
     userTemplates.forEach((t, i) => {
       const card = document.createElement('div');
       card.className = 'tpl-card';
-      card.innerHTML = `<div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${esc(t.lang||'?')}</div>`;
+      const langIcon = t.lang === 'php' ? '<i class="bx bxl-php"></i>' : t.lang === 'css' ? '<i class="bx bx-palette"></i>' : t.lang === 'js' ? '<i class="bx bxl-javascript"></i>' : t.lang === 'sql' ? '<i class="bx bx-data"></i>' : '<i class="bx bx-world"></i>';
+      const visIcon = t.public ? '<i class="bx bx-globe" title="Publiczny"></i>' : '<i class="bx bx-lock-alt" title="Prywatny"></i>';
+      card.innerHTML = `<div class="tc-icon">${langIcon}</div><div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${visIcon} ${esc(t.lang||'?')}</div>`;
       const del = document.createElement('button');
       del.className = 'tpl-del'; del.innerHTML = '<i class="bx bx-trash"></i>';
       del.title = 'Usuń szablon';
@@ -1616,10 +1618,11 @@ async function saveAsTemplate() {
   const ext  = state.activeFile.split('.').pop().toLowerCase();
   const name = prompt('Nazwa szablonu:', state.activeFile.replace(/.[^.]+$/, '') + ' – ' + new Date().toLocaleDateString());
   if (!name) return;
+  const isPublic = confirm('Czy szablon ma być publiczny?\n\nOK = Publiczny\nAnuluj = Prywatny (tylko Twój)');
   const content = editor.getValue();
-  await apiPost('/api/templates', { name, content, lang: ext });
+  await apiPost('/api/templates', { name, content, lang: ext, public: isPublic });
   await loadUserTemplates();
-  showToast('Szablon zapisany!');
+  showToast('Szablon zapisany jako ' + (isPublic ? 'publiczny' : 'prywatny') + '!');
 }
 
 // ════════════════════════════════════════════════════════════
