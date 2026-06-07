@@ -1,2 +1,5 @@
 [phases.setup]
-nixPkgs = ["php83", "nodejs_20"]
+nixPkgs = ["php", "nodejs_20"]
+
+[start]
+cmd = "node server.js"
