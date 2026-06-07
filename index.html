@@ -319,6 +319,9 @@ a { color: var(--primary); }
 .db-btn.ok:hover { background:var(--primary-h); }
 .db-btn:disabled { opacity:.4; cursor:not-allowed; }
 #db-status { font-size:12px; color:var(--subtext); flex-shrink:0; }
+#db-status.ok  { color:var(--green,#22c55e); }
+#db-status.err { color:var(--red,#ef4444); }
+#db-status.warn { color:var(--warning,#f59e0b); }
 #db-tables { display:flex; flex-wrap:wrap; gap:5px; flex-shrink:0; }
 .tbl-chip { padding:3px 10px; background:var(--bg3); border-radius:20px; font-size:11px;
   cursor:pointer; border:1px solid var(--border); transition:.15s; }
@@ -1906,9 +1909,32 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
       const text = await file.text();
       if (sqlDb) sqlDb.close();
       sqlDb = new SQL.Database();
-      sqlDb.run(text);
-      setDbStatus('Załadowano .sql: ' + file.name + ' ✓', 'ok');
-      showToast('✅ Baza załadowana z ' + file.name);
+      // Split into individual statements, skip MySQL-specific ones
+      const stmts = text
+        .split(/;\s*\n/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0 && !s.startsWith('--') && !/^\/\*/.test(s))
+        .filter(s => {
+          const upper = s.toUpperCase().trimStart();
+          return !(
+            upper.startsWith('SET ') ||
+            upper.startsWith('USE ') ||
+            upper.startsWith('LOCK ') ||
+            upper.startsWith('UNLOCK ') ||
+            upper.startsWith('START TRANSACTION') ||
+            upper.startsWith('COMMIT') ||
+            upper.startsWith('ROLLBACK') ||
+            upper.startsWith('/*!') ||
+            upper.startsWith('DELIMITER')
+          );
+        });
+      let errors = 0;
+      for (const stmt of stmts) {
+        try { sqlDb.run(stmt + ';'); } catch(e) { errors++; }
+      }
+      const msg = errors > 0 ? ` (pominięto ${errors} niekompatybilnych)` : ' ✓';
+      setDbStatus('Załadowano .sql: ' + file.name + msg, errors > 0 ? 'warn' : 'ok');
+      showToast(errors > 0 ? `⚠️ Załadowano z ${errors} błędami` : '✅ Baza załadowana z ' + file.name);
     } else {
       const buf = await file.arrayBuffer();
       if (sqlDb) sqlDb.close();
