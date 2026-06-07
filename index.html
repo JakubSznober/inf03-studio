@@ -182,7 +182,7 @@ a { color: var(--primary); }
 /* ── EDITOR PANEL ───────────────────────────────────────────── */
 #editor-panel {
   display:flex; flex-direction:column; overflow:hidden;
-  background:var(--bg);
+  background:var(--bg); flex:1 1 0; min-width:0;
 }
 #editor-header {
   display:flex; align-items:center; gap:8px; padding:0 12px; height:36px;
@@ -213,7 +213,7 @@ a { color: var(--primary); }
 #resizer:hover, #resizer.dragging { background:var(--primary); }
 
 /* ── PREVIEW PANEL ───────────────────────────────────────────── */
-#preview-panel { display:flex; flex-direction:column; overflow:hidden; background:var(--bg); }
+#preview-panel { display:flex; flex-direction:column; overflow:hidden; background:var(--bg); flex:1 1 0; min-width:0; }
 #preview-header {
   display:flex; align-items:center; gap:8px; padding:0 12px; height:36px;
   border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg2); font-size:12px;
@@ -378,11 +378,17 @@ a { color: var(--primary); }
 /* ── FAB BUTTONS ─────────────────────────────────────────────── */
 .fab-wrap { position:fixed; bottom:16px; right:16px; display:flex; flex-direction:column;
   gap:8px; align-items:flex-end; z-index:300; }
-.fab { display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:20px;
+.fab { position:relative; display:flex; align-items:center; justify-content:center;
+  width:40px; height:40px; border-radius:50%;
   border:1px solid var(--border); background:var(--bg); box-shadow:var(--shadow);
   cursor:pointer; font-size:12px; font-weight:500; color:var(--text); transition:.15s; }
 .fab:hover { background:var(--bg3); border-color:var(--primary); color:var(--primary); }
-.fab i { font-size:16px; }
+.fab i { font-size:18px; pointer-events:none; }
+.fab-tip { position:absolute; right:calc(100% + 8px); top:50%; transform:translateY(-50%);
+  background:var(--bg3); color:var(--text); font-size:11px; font-weight:500;
+  padding:4px 8px; border-radius:6px; white-space:nowrap; border:1px solid var(--border);
+  opacity:0; pointer-events:none; transition:opacity .15s; }
+.fab:hover .fab-tip { opacity:1; }
 
 /* ── SCROLLBAR ───────────────────────────────────────────────── */
 ::-webkit-scrollbar { width:6px; height:6px; }
