@@ -524,8 +524,9 @@ a { color: var(--primary); }
   <div class="fp-body" id="db-body">
     <div id="db-toolbar">
       <button class="db-btn ok" id="db-new-btn"><i class="bx bx-plus"></i> Nowa baza</button>
-      <button class="db-btn" id="db-load-btn"><i class="bx bx-folder-open"></i> Załaduj .db</button>
-      <button class="db-btn" id="db-save-btn" disabled><i class="bx bx-download"></i> Pobierz bazę</button>
+      <button class="db-btn" id="db-load-btn"><i class="bx bx-folder-open"></i> Załaduj .db/.sql</button>
+      <button class="db-btn" id="db-save-btn" disabled><i class="bx bx-download"></i> Pobierz .db</button>
+      <button class="db-btn" id="db-export-sql-btn" disabled><i class="bx bx-code-alt"></i> Eksport .sql</button>
       <input type="file" id="db-file-inp" accept=".db,.sqlite,.sqlite3,.sql" hidden>
     </div>
     <div id="db-status">Stan: Brak aktywnej bazy</div>
@@ -1706,7 +1707,9 @@ document.getElementById('db-new-btn').addEventListener('click', () => {
   if (sqlDb) sqlDb.close();
   sqlDb = new SQL.Database();
   setDbStatus('Nowa baza aktywna ✓', 'ok');
+  showToast('Utworzono nową bazę danych');
   document.getElementById('db-save-btn').disabled = false;
+  document.getElementById('db-export-sql-btn').disabled = false;
   document.getElementById('db-result').innerHTML = '';
   refreshTables();
 });
@@ -1717,24 +1720,25 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
   if (!SQL) return setDbStatus('SQL.js jeszcze się ładuje...', 'err');
   try {
     if (file.name.endsWith('.sql')) {
-      // .sql text file — create new DB and execute all statements
       const text = await file.text();
       if (sqlDb) sqlDb.close();
       sqlDb = new SQL.Database();
       sqlDb.run(text);
       setDbStatus('Załadowano .sql: ' + file.name + ' ✓', 'ok');
+      showToast('✅ Baza załadowana z ' + file.name);
     } else {
-      // binary .db / .sqlite file
       const buf = await file.arrayBuffer();
       if (sqlDb) sqlDb.close();
       sqlDb = new SQL.Database(new Uint8Array(buf));
       setDbStatus('Załadowano: ' + file.name + ' ✓', 'ok');
+      showToast('✅ Baza załadowana z ' + file.name);
     }
     document.getElementById('db-save-btn').disabled = false;
+    document.getElementById('db-export-sql-btn').disabled = false;
     document.getElementById('db-result').innerHTML = '';
     refreshTables();
     e.target.value = '';
-  } catch(err) { setDbStatus('Błąd: ' + err.message, 'err'); }
+  } catch(err) { setDbStatus('Błąd: ' + err.message, 'err'); showToast('❌ Błąd ładowania: ' + err.message); }
 });
 
 document.getElementById('db-save-btn').addEventListener('click', () => {
@@ -1745,6 +1749,35 @@ document.getElementById('db-save-btn').addEventListener('click', () => {
     download: 'baza.db'
   });
   a.click(); URL.revokeObjectURL(a.href);
+  showToast('Pobrano baza.db');
+});
+
+document.getElementById('db-export-sql-btn').addEventListener('click', () => {
+  if (!sqlDb) return;
+  try {
+    const tables = sqlDb.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+    if (!tables.length) { showToast('Baza jest pusta'); return; }
+    let out = '-- Eksport SQL\n';
+    for (const [tName] of tables[0].values) {
+      const schema = sqlDb.exec(`SELECT sql FROM sqlite_master WHERE name='${tName}'`);
+      if (schema.length && schema[0].values.length) out += schema[0].values[0][0] + ';\n';
+      const rows = sqlDb.exec('SELECT * FROM `' + tName + '`');
+      if (rows.length && rows[0].values.length) {
+        const cols = rows[0].columns.join(', ');
+        for (const r of rows[0].values) {
+          const vals = r.map(v => v === null ? 'NULL' : typeof v === 'string' ? "'" + v.replace(/'/g,"''") + "'" : v).join(', ');
+          out += `INSERT INTO \`${tName}\` (${cols}) VALUES (${vals});\n`;
+        }
+      }
+      out += '\n';
+    }
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([out], { type: 'text/plain' })),
+      download: 'baza.sql'
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+    showToast('Pobrano baza.sql');
+  } catch(err) { showToast('Błąd eksportu: ' + err.message); }
 });
 
 function executeSQL() {
