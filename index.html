@@ -366,20 +366,42 @@ a { color: var(--primary); }
 .ctx-sep { height:1px; background:var(--border); margin:3px 0; }
 
 /* ── DIALOG ──────────────────────────────────────────────────── */
-#dialog-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:850;
-  display:none; align-items:center; justify-content:center; }
-#dialog-overlay.show { display:flex; }
-#dialog-box { background:var(--bg); border:1px solid var(--border); border-radius:12px;
-  padding:20px; min-width:300px; box-shadow:var(--shadow-md); }
-#dialog-box h4 { font-size:14px; font-weight:600; margin-bottom:12px; }
-#dialog-input { width:100%; padding:8px 10px; border:1px solid var(--border);
-  border-radius:var(--radius); background:var(--bg2); color:var(--text); outline:none; }
-#dialog-input:focus { border-color:var(--primary); }
-.dialog-btns { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
-.dialog-btns button { padding:6px 16px; border-radius:6px; border:1px solid var(--border);
+#dialog-overlay, #tpl-save-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55);
+  z-index:850; display:none; align-items:center; justify-content:center; }
+#dialog-overlay.show, #tpl-save-overlay.show { display:flex; }
+.dialog-box { background:var(--bg); border:1px solid var(--border); border-radius:14px;
+  padding:24px; min-width:320px; max-width:420px; width:90%; box-shadow:var(--shadow-md); }
+.dialog-title { font-size:15px; font-weight:700; margin-bottom:14px; }
+.dialog-input, #dialog-input { width:100%; padding:9px 12px; border:1px solid var(--border);
+  border-radius:var(--radius); background:var(--bg2); color:var(--text); outline:none;
+  font-size:13px; box-sizing:border-box; }
+.dialog-input:focus, #dialog-input:focus { border-color:var(--primary); }
+.dialog-err { font-size:12px; color:var(--red,#e55); margin-top:6px; min-height:16px; }
+.dialog-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+.dialog-btn { padding:7px 18px; border-radius:8px; border:1px solid var(--border);
   cursor:pointer; font-size:13px; background:var(--bg2); color:var(--text); transition:.15s; }
-.dialog-btns button.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
-.dialog-btns button:hover { opacity:.85; }
+.dialog-btn.ok, .dialog-btn.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+.dialog-btn:hover { opacity:.85; }
+/* template save modal */
+#tpl-save-box { background:var(--bg); border:1px solid var(--border); border-radius:14px;
+  padding:26px; width:380px; max-width:92vw; box-shadow:var(--shadow-md); }
+#tpl-save-box h3 { font-size:15px; font-weight:700; margin-bottom:16px; }
+#tpl-save-name { width:100%; padding:9px 12px; border:1px solid var(--border);
+  border-radius:var(--radius); background:var(--bg2); color:var(--text); outline:none;
+  font-size:13px; margin-bottom:6px; box-sizing:border-box; }
+#tpl-save-name:focus { border-color:var(--primary); }
+#tpl-save-err { font-size:12px; color:var(--red,#e55); min-height:18px; margin-bottom:10px; }
+.tpl-vis-btns { display:flex; gap:10px; margin-bottom:6px; }
+.tpl-vis-btn { flex:1; padding:12px 8px; border-radius:10px; border:2px solid var(--border);
+  background:var(--bg2); color:var(--text); cursor:pointer; font-size:13px; font-weight:500;
+  display:flex; flex-direction:column; align-items:center; gap:6px; transition:.15s; }
+.tpl-vis-btn i { font-size:24px; }
+.tpl-vis-btn:hover { border-color:var(--primary); background:var(--bg3); }
+.tpl-vis-btn.private:hover { border-color:#888; }
+#tpl-save-cancel { width:100%; margin-top:10px; padding:8px; border-radius:8px;
+  border:1px solid var(--border); background:transparent; color:var(--subtext);
+  cursor:pointer; font-size:13px; transition:.15s; }
+#tpl-save-cancel:hover { background:var(--bg2); color:var(--text); }
 
 /* ── TOAST ───────────────────────────────────────────────────── */
 #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
@@ -616,6 +638,28 @@ a { color: var(--primary); }
       <button class="dialog-btn" onclick="closeDialog()">Anuluj</button>
       <button class="dialog-btn ok" id="dialog-ok">OK</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══ TEMPLATE SAVE MODAL ═══════════════════════════════════ -->
+<div id="tpl-save-overlay">
+  <div id="tpl-save-box">
+    <h3><i class="bx bx-bookmark-plus"></i> Zapisz jako szablon</h3>
+    <input id="tpl-save-name" type="text" placeholder="Nazwa szablonu…">
+    <div id="tpl-save-err"></div>
+    <div class="tpl-vis-btns">
+      <button class="tpl-vis-btn" id="tpl-btn-private" onclick="confirmSaveTemplate(false)">
+        <i class="bx bx-lock-alt"></i>
+        <span>Prywatny</span>
+        <small style="font-size:10px;color:var(--subtext);font-weight:400">Tylko dla Ciebie</small>
+      </button>
+      <button class="tpl-vis-btn" id="tpl-btn-public" onclick="confirmSaveTemplate(true)">
+        <i class="bx bx-globe"></i>
+        <span>Publiczny</span>
+        <small style="font-size:10px;color:var(--subtext);font-weight:400">Widoczny dla wszystkich</small>
+      </button>
+    </div>
+    <button id="tpl-save-cancel" onclick="closeTplSaveModal()">Anuluj</button>
   </div>
 </div>
 
@@ -1724,17 +1768,42 @@ function loadTemplate(content) {
   showToast('Szablon załadowany');
 }
 
-async function saveAsTemplate() {
+function openTplSaveModal() {
   if (!state.activeFile) { showToast('Brak aktywnego pliku'); return; }
-  const ext  = state.activeFile.split('.').pop().toLowerCase();
-  const name = prompt('Nazwa szablonu:', state.activeFile.replace(/.[^.]+$/, '') + ' – ' + new Date().toLocaleDateString());
-  if (!name) return;
-  const isPublic = confirm('Czy szablon ma być publiczny?\n\nOK = Publiczny\nAnuluj = Prywatny (tylko Twój)');
-  const content = editor.getValue();
-  await apiPost('/api/templates', { name, content, lang: ext, public: isPublic });
-  await loadUserTemplates();
-  showToast('Szablon zapisany jako ' + (isPublic ? 'publiczny' : 'prywatny') + '!');
+  const suggested = state.activeFile.replace(/\.[^.]+$/, '');
+  document.getElementById('tpl-save-name').value = suggested;
+  document.getElementById('tpl-save-err').textContent = '';
+  document.getElementById('tpl-save-overlay').classList.add('show');
+  setTimeout(() => document.getElementById('tpl-save-name').focus(), 50);
 }
+
+function closeTplSaveModal() {
+  document.getElementById('tpl-save-overlay').classList.remove('show');
+}
+
+async function confirmSaveTemplate(isPublic) {
+  const name = document.getElementById('tpl-save-name').value.trim();
+  if (!name) { document.getElementById('tpl-save-err').textContent = 'Podaj nazwę szablonu'; return; }
+  const ext = state.activeFile.split('.').pop().toLowerCase();
+  const content = editor.getValue();
+  try {
+    await apiPost('/api/templates', { name, content, lang: ext, public: isPublic });
+    await loadUserTemplates();
+    closeTplSaveModal();
+    showToast('Szablon „' + name + '" zapisany jako ' + (isPublic ? 'publiczny 🌐' : 'prywatny 🔒') + '!');
+  } catch (err) {
+    document.getElementById('tpl-save-err').textContent = err.message || 'Błąd zapisu';
+  }
+}
+
+async function saveAsTemplate() { openTplSaveModal(); }
+
+document.getElementById('tpl-save-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('tpl-save-overlay')) closeTplSaveModal();
+});
+document.getElementById('tpl-save-name').addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeTplSaveModal();
+});
 
 // ════════════════════════════════════════════════════════════
 //  DATABASE (sql.js)
