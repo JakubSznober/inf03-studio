@@ -1910,33 +1910,62 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
       if (sqlDb) sqlDb.close();
       sqlDb = new SQL.Database();
 
-      // ── Full MySQL → SQLite converter ──────────────────────────
-      function mysqlToSqlite(sql) {
-        return sql
-          // Strip /*!40101 ... */ version-specific comments
-          .replace(/\/\*![\s\S]*?\*\//gm, '')
-          // Strip single-line -- comments that are whole lines
-          // (keep inline, splitStatements handles them)
-          // Strip table-level options after closing )
-          .replace(/\)\s*ENGINE\s*=\s*[^\n;]*/gi, ')')
-          // Remove column CHARACTER SET / COLLATE
-          .replace(/\s+CHARACTER\s+SET\s+[\w\d_]+/gi, '')
-          .replace(/\s+COLLATE\s+[\w\d_]+/gi, '')
-          // Remove UNSIGNED, ZEROFILL
+      // ── Full phpMyAdmin → SQLite converter ─────────────────────
+      function mysqlToSqlite(raw) {
+        let sql = raw;
+
+        // 1. Strip /*!40xxx ... */ MySQL version-guard comments
+        sql = sql.replace(/\/\*![\s\S]*?\*\//gm, '');
+
+        // 2. Extract PRIMARY KEY mappings from ALTER TABLE ... ADD PRIMARY KEY
+        //    phpMyAdmin puts PK here, not inside CREATE TABLE
+        const pkMap = {};
+        const pkRe = /ALTER\s+TABLE\s+`?(\w+)`?[\s\S]*?ADD\s+PRIMARY\s+KEY\s*\(([^)]+)\)/gi;
+        let m;
+        while ((m = pkRe.exec(sql)) !== null) {
+          pkMap[m[1]] = m[2].trim();
+        }
+
+        // 3. Strip table-level options:  ) ENGINE=InnoDB DEFAULT CHARSET=... ;  →  );
+        sql = sql.replace(/\)(\s*(ENGINE|AUTO_INCREMENT\s*=|DEFAULT\s+CHAR|DEFAULT\s+COLL|ROW_FORMAT|CHECKSUM|AVG_ROW|MAX_ROWS|MIN_ROWS|DELAY_KEY)[^;]*)/gi, ')');
+
+        // 4. Column-level cleanup
+        sql = sql
+          .replace(/\s+CHARACTER\s+SET\s+\S+/gi, '')
+          .replace(/\s+COLLATE\s+\S+/gi, '')
           .replace(/\s+UNSIGNED/gi, '')
           .replace(/\s+ZEROFILL/gi, '')
-          // Remove display width from integer types: int(11) → int
+          .replace(/ON\s+UPDATE\s+CURRENT_TIMESTAMP/gi, '')
+          // Remove display width: int(11) → int
           .replace(/\b(TINYINT|SMALLINT|MEDIUMINT|INT|BIGINT)\s*\(\s*\d+\s*\)/gi, '$1')
-          // column-level AUTO_INCREMENT → AUTOINCREMENT
-          .replace(/\bAUTO_INCREMENT\b/gi, 'AUTOINCREMENT')
-          // Remove KEY / INDEX lines inside CREATE TABLE  (PRIMARY KEY stays!)
-          .replace(/,\s*\n(\s*(UNIQUE\s+)?KEY\s[^\n]+)/gi, '')
-          .replace(/,\s*\n(\s*INDEX\s[^\n]+)/gi, '')
-          // Remove trailing comma before closing ) from above removals
+          // Remove AUTO_INCREMENT entirely from column defs
+          // (SQLite INTEGER PRIMARY KEY auto-increments without the keyword)
+          .replace(/\s+AUTO_INCREMENT\b/gi, '')
+          // Convert UNIQUE KEY `name` (cols) → UNIQUE (cols) inside CREATE TABLE
+          .replace(/,(\s*\n\s*)UNIQUE\s+KEY\s+`?[^`(\s]+`?\s*(\([^)]+\))/gi, ',$1UNIQUE $2')
+          // Remove regular KEY / INDEX lines
+          .replace(/,\s*\n\s*((?:FULLTEXT\s+|SPATIAL\s+)?KEY\s|INDEX\s)[^\n]*/gi, '')
+          // Clean up trailing comma before closing )
           .replace(/,(\s*\n\s*\))/g, '$1');
+
+        // 5. Inject PRIMARY KEY into CREATE TABLE bodies
+        //    Body regex handles: backtick identifiers, quoted strings, 1-level parens (varchar(n), enum(...))
+        if (Object.keys(pkMap).length) {
+          sql = sql.replace(
+            /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?(\w+)`?\s*\(((?:[^()'"`]|'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`[^`]*`|\([^)]*\))*)\)/gi,
+            (match, tbl, body) => {
+              const pk = pkMap[tbl];
+              if (!pk || /PRIMARY\s+KEY/i.test(body)) return match;
+              const cleanBody = body.trimEnd().replace(/,\s*$/, '');
+              return `CREATE TABLE \`${tbl}\` (${cleanBody},\n  PRIMARY KEY (${pk})\n)`;
+            }
+          );
+        }
+
+        return sql;
       }
 
-      // ── Statement splitter (respects strings) ──────────────────
+      // ── Statement splitter (handles strings + backtick identifiers) ──
       function splitStatements(sql) {
         const stmts = [];
         let cur = '', inStr = false, strCh = '';
@@ -1956,40 +1985,39 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
         return stmts;
       }
 
-      // ── Filter statements unsupported by SQLite ─────────────────
-      function isSupportedStmt(s) {
-        if (!s || /^\s*--/.test(s) || /^\s*$/.test(s)) return false;
+      // ── Skip statements SQLite doesn't support ──────────────────
+      function shouldSkip(s) {
+        if (!s || /^\s*(--|#)/.test(s) || /^\s*$/.test(s)) return true;
         const u = s.toUpperCase().trimStart();
-        // Skip MySQL-only session/transaction commands
-        if (/^SET\s/.test(u)) return false;
-        if (/^USE\s/.test(u)) return false;
-        if (/^LOCK\s/.test(u)) return false;
-        if (/^UNLOCK\s/.test(u)) return false;
-        if (/^START\s+TRANSACTION/.test(u)) return false;
-        if (/^COMMIT\b/.test(u)) return false;
-        if (/^ROLLBACK\b/.test(u)) return false;
-        if (/^DELIMITER\b/.test(u)) return false;
-        // ALTER TABLE: keep only ADD COLUMN, DROP COLUMN, RENAME
+        if (/^SET\s/.test(u))               return true;
+        if (/^USE\s/.test(u))               return true;
+        if (/^LOCK\s/.test(u))              return true;
+        if (/^UNLOCK\s/.test(u))            return true;
+        if (/^START\s+TRANSACTION/.test(u)) return true;
+        if (/^COMMIT\b/.test(u))            return true;
+        if (/^ROLLBACK\b/.test(u))          return true;
+        if (/^DELIMITER\b/.test(u))         return true;
         if (/^ALTER\s+TABLE\s/.test(u)) {
-          if (/ADD\s+COLUMN\b/i.test(u)) return true;
-          if (/DROP\s+COLUMN\b/i.test(u)) return true;
-          if (/RENAME\s+(TO|COLUMN)\b/i.test(u)) return true;
-          return false; // ADD KEY, ADD PRIMARY KEY, MODIFY, CHANGE, ADD CONSTRAINT...
+          if (/\bADD\s+COLUMN\b/i.test(u))             return false;
+          if (/\bDROP\s+COLUMN\b/i.test(u))            return false;
+          if (/\bRENAME\s+(TO|COLUMN)\b/i.test(u))     return false;
+          return true; // skip ADD KEY, MODIFY, ADD CONSTRAINT, etc.
         }
-        return true;
+        return false;
       }
 
-      const stmts = splitStatements(mysqlToSqlite(text)).filter(isSupportedStmt);
+      const converted = mysqlToSqlite(text);
+      const stmts = splitStatements(converted).filter(s => !shouldSkip(s));
 
-      let errors = 0, ok = 0, errorLog = [];
+      let ok = 0, errors = 0, errLog = [];
       for (const stmt of stmts) {
         try { sqlDb.run(stmt + ';'); ok++; }
-        catch(e) { errors++; errorLog.push(e.message); }
+        catch(e) { errors++; errLog.push(e.message + ' → ' + stmt.slice(0,100)); }
       }
-      const msg = errors > 0 ? ` (OK: ${ok}, błędy: ${errors})` : ` ✓ (${ok} instrukcji)`;
-      setDbStatus('Załadowano: ' + file.name + msg, errors > 0 && ok === 0 ? 'err' : 'ok');
+      if (errLog.length) console.warn('[SQL import]', errLog);
+      const msg = errors ? ` (OK: ${ok}, błędy: ${errors})` : ` ✓ (${ok} instrukcji)`;
+      setDbStatus('Załadowano: ' + file.name + msg, ok > 0 ? 'ok' : 'err');
       showToast(ok > 0 ? `✅ Załadowano (${ok} instrukcji${errors ? ', błędy: '+errors : ''})` : '❌ Brak poprawnych instrukcji');
-      if (errorLog.length) console.warn('[SQL import errors]', errorLog);
     } else {
       const buf = await file.arrayBuffer();
       if (sqlDb) sqlDb.close();
