@@ -239,19 +239,35 @@ http.createServer(async (req, res) => {
     }
 
     if (p === '/api/templates' && m === 'GET') {
+      // user's own templates
       const names = fs.existsSync(td) ? fs.readdirSync(td).filter(f => f.endsWith('.json')) : [];
-      const templates = names.map(f => { try { return JSON.parse(fs.readFileSync(path.join(td,f),'utf8')); } catch { return null; } }).filter(Boolean);
-      return respond(res, 200, { templates });
+      const own = names.map(f => { try { return JSON.parse(fs.readFileSync(path.join(td,f),'utf8')); } catch { return null; } }).filter(Boolean);
+      // public templates from all other users
+      const publicTpls = [];
+      try {
+        for (const u of fs.readdirSync(PROJ)) {
+          if (u === sess.username) continue;
+          const uTplDir = path.join(PROJ, u, 'tpl');
+          if (!fs.existsSync(uTplDir)) continue;
+          for (const f of fs.readdirSync(uTplDir).filter(f => f.endsWith('.json'))) {
+            try {
+              const t = JSON.parse(fs.readFileSync(path.join(uTplDir, f), 'utf8'));
+              if (t && t.public) publicTpls.push({ ...t, _owner: u, _readonly: true });
+            } catch {}
+          }
+        }
+      } catch {}
+      return respond(res, 200, { templates: own, publicTemplates: publicTpls });
     }
 
     if (p === '/api/templates' && m === 'POST') {
-      const { name, content, lang } = body;
+      const { name, content, lang, public: pub } = body;
       if (!name || typeof name !== 'string' || name.length > 80)
-        return respond(res, 400, { error: 'Nieprawidłowa nazwa szablonu' });
+        return respond(res, 400, { error: 'Nieprawid\u0142owa nazwa szablonu' });
       const safe = name.replace(/[^a-zA-Z0-9_\- ]/g,'_').trim();
       const fp = safeJoin(td, safe + '.json');
       if (!fp) return respond(res, 403, { error: 'Forbidden' });
-      fs.writeFileSync(fp, JSON.stringify({ name, content, lang, created: Date.now() }));
+      fs.writeFileSync(fp, JSON.stringify({ name, content, lang, public: !!pub, created: Date.now() }));
       return respond(res, 200, { ok: true });
     }
 

@@ -80,12 +80,13 @@ a { color: var(--primary); }
 .tb-btn.accent:hover { background: var(--primary-h); }
 .tb-btn i { font-size: 15px; }
 .tb-btn-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border-radius: var(--radius); border: none; cursor: pointer;
-  background: transparent; color: var(--text); transition: background .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 4px 8px; height: 28px; border-radius: var(--radius); border: none; cursor: pointer;
+  background: transparent; color: var(--text); transition: background .15s; font-size: 12px;
 }
 .tb-btn-icon:hover { background: var(--bg3); }
-.tb-btn-icon i { font-size: 17px; }
+.tb-btn-icon i { font-size: 15px; }
+.tb-label { font-size: 12px; font-weight: 500; }
 
 /* Toggle */
 .tog-row { display:flex; align-items:center; gap:6px; cursor:pointer; color: var(--subtext);
@@ -425,9 +426,9 @@ a { color: var(--primary); }
   </label>
   <button class="tb-btn" id="btn-console" title="Konsola (Ctrl+`)"><i class="bx bx-terminal"></i> Konsola</button>
   <div class="sep"></div>
-  <button class="tb-btn-icon" id="fab-tpl" title="Szablony"><i class="bx bx-layout"></i></button>
-  <button class="tb-btn-icon" id="fab-pdf" title="Przeglądarka PDF"><i class="bx bx-file"></i></button>
-  <button class="tb-btn-icon" id="fab-db" title="Baza Danych"><i class="bx bx-data"></i></button>
+  <button class="tb-btn-icon" id="fab-tpl" title="Szablony"><i class="bx bx-layout"></i> <span class="tb-label">Szablony</span></button>
+  <button class="tb-btn-icon" id="fab-pdf" title="Przeglądarka PDF"><i class="bx bx-file"></i> <span class="tb-label">PDF</span></button>
+  <button class="tb-btn-icon" id="fab-db" title="Baza Danych"><i class="bx bx-data"></i> <span class="tb-label">Baza</span></button>
   <div class="spacer"></div>
   <button class="tb-btn-icon" id="btn-theme" onclick="toggleTheme()" title="Zmień motyw"><i class="bx bx-moon" id="theme-icon"></i></button>
   <div class="user-chip" id="user-chip"><i class="bx bx-user"></i><strong id="user-name">—</strong></div>
@@ -573,6 +574,10 @@ a { color: var(--primary); }
     <div id="tpl-user-section">
       <div class="tpl-section-title">Twoje szablony</div>
       <div class="tpl-grid" id="tpl-user-grid"></div>
+    </div>
+    <div id="tpl-public-section" style="display:none">
+      <div class="tpl-section-title">Publiczne szablony innych użytkowników</div>
+      <div class="tpl-grid" id="tpl-public-grid"></div>
     </div>
     <div>
       <div class="tpl-section-title">Wbudowane szablony</div>
@@ -1550,18 +1555,24 @@ function waliduj(e) {
 ];
 
 let userTemplates = [];
+let publicTemplates = [];
 
 async function loadUserTemplates() {
   try {
-    const { templates } = await apiGet('/api/templates');
-    userTemplates = templates;
+    const data = await apiGet('/api/templates');
+    userTemplates = data.templates || [];
+    publicTemplates = data.publicTemplates || [];
     renderTemplatesPanel();
-  } catch { userTemplates = []; }
+  } catch { userTemplates = []; publicTemplates = []; }
 }
 
 function renderTemplatesPanel() {
   const userGrid    = document.getElementById('tpl-user-grid');
   const builtinGrid = document.getElementById('tpl-builtin-grid');
+  const publicGrid  = document.getElementById('tpl-public-grid');
+  const publicSection = document.getElementById('tpl-public-section');
+
+  const makeLangIcon = lang => lang === 'php' ? '<i class="bx bxl-php"></i>' : lang === 'css' ? '<i class="bx bx-palette"></i>' : lang === 'js' ? '<i class="bx bxl-javascript"></i>' : lang === 'sql' ? '<i class="bx bx-data"></i>' : '<i class="bx bx-world"></i>';
 
   userGrid.innerHTML = '';
   if (!userTemplates.length) {
@@ -1570,9 +1581,8 @@ function renderTemplatesPanel() {
     userTemplates.forEach((t, i) => {
       const card = document.createElement('div');
       card.className = 'tpl-card';
-      const langIcon = t.lang === 'php' ? '<i class="bx bxl-php"></i>' : t.lang === 'css' ? '<i class="bx bx-palette"></i>' : t.lang === 'js' ? '<i class="bx bxl-javascript"></i>' : t.lang === 'sql' ? '<i class="bx bx-data"></i>' : '<i class="bx bx-world"></i>';
       const visIcon = t.public ? '<i class="bx bx-globe" title="Publiczny"></i>' : '<i class="bx bx-lock-alt" title="Prywatny"></i>';
-      card.innerHTML = `<div class="tc-icon">${langIcon}</div><div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${visIcon} ${esc(t.lang||'?')}</div>`;
+      card.innerHTML = `<div class="tc-icon">${makeLangIcon(t.lang)}</div><div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${visIcon} ${esc(t.lang||'?')}</div>`;
       const del = document.createElement('button');
       del.className = 'tpl-del'; del.innerHTML = '<i class="bx bx-trash"></i>';
       del.title = 'Usuń szablon';
@@ -1590,11 +1600,26 @@ function renderTemplatesPanel() {
     });
   }
 
+  // Public templates from other users
+  if (publicTemplates.length) {
+    publicSection.style.display = '';
+    publicGrid.innerHTML = '';
+    publicTemplates.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'tpl-card';
+      card.innerHTML = `<div class="tc-icon">${makeLangIcon(t.lang)}</div><div class="tc-name">${esc(t.name)}</div><div class="tc-lang"><i class="bx bx-user"></i> ${esc(t._owner||'?')} · ${esc(t.lang||'?')}</div>`;
+      card.addEventListener('click', () => loadTemplate(t.content));
+      publicGrid.appendChild(card);
+    });
+  } else {
+    publicSection.style.display = 'none';
+  }
+
   builtinGrid.innerHTML = '';
   BUILTIN_TEMPLATES.forEach(t => {
     const card = document.createElement('div');
     card.className = 'tpl-card';
-    card.innerHTML = `<div class="tc-icon">${t.lang === 'php' ? '<i class="bx bxl-php"></i>' : t.lang === 'css' ? '<i class="bx bx-palette"></i>' : t.lang === 'js' ? '<i class="bx bxl-javascript"></i>' : t.lang === 'sql' ? '<i class="bx bx-data"></i>' : '<i class="bx bx-world"></i>'}</div><div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${esc(t.lang)}</div>`;
+    card.innerHTML = `<div class="tc-icon">${makeLangIcon(t.lang)}</div><div class="tc-name">${esc(t.name)}</div><div class="tc-lang">${esc(t.lang)}</div>`;
     card.addEventListener('click', () => loadTemplate(t.content));
     builtinGrid.appendChild(card);
   });
