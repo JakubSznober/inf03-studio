@@ -526,7 +526,7 @@ a { color: var(--primary); }
       <button class="db-btn ok" id="db-new-btn"><i class="bx bx-plus"></i> Nowa baza</button>
       <button class="db-btn" id="db-load-btn"><i class="bx bx-folder-open"></i> Załaduj .db</button>
       <button class="db-btn" id="db-save-btn" disabled><i class="bx bx-download"></i> Pobierz bazę</button>
-      <input type="file" id="db-file-inp" accept=".db,.sqlite,.sqlite3" hidden>
+      <input type="file" id="db-file-inp" accept=".db,.sqlite,.sqlite3,.sql" hidden>
     </div>
     <div id="db-status">Stan: Brak aktywnej bazy</div>
     <div id="db-tables"></div>
@@ -739,7 +739,7 @@ const editor = CodeMirror(document.getElementById('editor-container'), {
   extraKeys: {
     'Ctrl-Enter': () => runPreview(),
     'Ctrl-S': () => saveActive(),
-    'Ctrl-Space': cm => {
+    'Alt-Space': cm => {
       const opts = getHintOptions(cm.getOption('mode'));
       if (opts) cm.showHint(opts);
     },
@@ -1716,13 +1716,24 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
   const file = e.target.files[0]; if (!file) return;
   if (!SQL) return setDbStatus('SQL.js jeszcze się ładuje...', 'err');
   try {
-    const buf = await file.arrayBuffer();
-    if (sqlDb) sqlDb.close();
-    sqlDb = new SQL.Database(new Uint8Array(buf));
-    setDbStatus('Załadowano: ' + file.name + ' ✓', 'ok');
+    if (file.name.endsWith('.sql')) {
+      // .sql text file — create new DB and execute all statements
+      const text = await file.text();
+      if (sqlDb) sqlDb.close();
+      sqlDb = new SQL.Database();
+      sqlDb.run(text);
+      setDbStatus('Załadowano .sql: ' + file.name + ' ✓', 'ok');
+    } else {
+      // binary .db / .sqlite file
+      const buf = await file.arrayBuffer();
+      if (sqlDb) sqlDb.close();
+      sqlDb = new SQL.Database(new Uint8Array(buf));
+      setDbStatus('Załadowano: ' + file.name + ' ✓', 'ok');
+    }
     document.getElementById('db-save-btn').disabled = false;
     document.getElementById('db-result').innerHTML = '';
     refreshTables();
+    e.target.value = '';
   } catch(err) { setDbStatus('Błąd: ' + err.message, 'err'); }
 });
 
