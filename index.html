@@ -1909,12 +1909,63 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
       const text = await file.text();
       if (sqlDb) sqlDb.close();
       sqlDb = new SQL.Database();
-      // Split into individual statements, skip MySQL-specific ones
-      const stmts = text
-        .split(/;\s*\n/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--') && !/^\/\*/.test(s))
+
+      // Convert MySQL dump to SQLite-compatible SQL
+      function mysqlToSqlite(sql) {
+        return sql
+          // Remove MySQL comments  /*!40... */
+          .replace(/\/\*![^*]*\*+(?:[^/*][^*]*\*+)*\//g, '')
+          // Remove ENGINE=..., AUTO_INCREMENT=N, DEFAULT CHARSET=..., ROW_FORMAT=..., COLLATE=...
+          .replace(/\s+ENGINE\s*=\s*\w+/gi, '')
+          .replace(/\s+AUTO_INCREMENT\s*=\s*\d+/gi, '')
+          .replace(/\s+DEFAULT\s+CHARSET\s*=\s*[\w\d]+/gi, '')
+          .replace(/\s+COLLATE\s*=\s*[\w\d_]+/gi, '')
+          .replace(/\s+ROW_FORMAT\s*=\s*\w+/gi, '')
+          .replace(/\s+COMMENT\s*=\s*'[^']*'/gi, '')
+          // Remove column-level: CHARACTER SET x, COLLATE x
+          .replace(/\s+CHARACTER\s+SET\s+[\w\d_]+/gi, '')
+          .replace(/\s+COLLATE\s+[\w\d_]+/gi, '')
+          // Remove display width from int: int(11) → int
+          .replace(/\b(TINYINT|SMALLINT|MEDIUMINT|INT|BIGINT)\s*\(\s*\d+\s*\)/gi, '$1')
+          // Remove UNSIGNED
+          .replace(/\s+UNSIGNED/gi, '')
+          // Replace AUTO_INCREMENT with AUTOINCREMENT (column-level)
+          .replace(/\bAUTO_INCREMENT\b/gi, 'AUTOINCREMENT')
+          // Remove KEY definitions inside CREATE TABLE (INDEX/KEY lines)
+          .replace(/,?\s*\n\s*(UNIQUE\s+)?KEY\s+`?[^`(]+`?\s*\([^)]*\)/gi, '')
+          // Remove trailing comma before ) that KEY removal may leave
+          .replace(/,(\s*\n\s*\))/g, '$1');
+      }
+
+      // Split on semicolons (but not inside strings) - use line-based approach
+      function splitStatements(sql) {
+        const stmts = [];
+        let current = '';
+        let inString = false;
+        let stringChar = '';
+        for (let i = 0; i < sql.length; i++) {
+          const ch = sql[i];
+          if (!inString && (ch === "'" || ch === '"')) {
+            inString = true; stringChar = ch; current += ch;
+          } else if (inString && ch === stringChar && sql[i-1] !== '\\') {
+            inString = false; current += ch;
+          } else if (!inString && ch === ';') {
+            const s = current.trim();
+            if (s) stmts.push(s);
+            current = '';
+          } else {
+            current += ch;
+          }
+        }
+        const s = current.trim();
+        if (s) stmts.push(s);
+        return stmts;
+      }
+
+      const converted = mysqlToSqlite(text);
+      const stmts = splitStatements(converted)
         .filter(s => {
+          if (!s || s.startsWith('--')) return false;
           const upper = s.toUpperCase().trimStart();
           return !(
             upper.startsWith('SET ') ||
@@ -1924,17 +1975,17 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
             upper.startsWith('START TRANSACTION') ||
             upper.startsWith('COMMIT') ||
             upper.startsWith('ROLLBACK') ||
-            upper.startsWith('/*!') ||
             upper.startsWith('DELIMITER')
           );
         });
-      let errors = 0;
+
+      let errors = 0, ok = 0;
       for (const stmt of stmts) {
-        try { sqlDb.run(stmt + ';'); } catch(e) { errors++; }
+        try { sqlDb.run(stmt + ';'); ok++; } catch(e) { errors++; }
       }
-      const msg = errors > 0 ? ` (pominięto ${errors} niekompatybilnych)` : ' ✓';
-      setDbStatus('Załadowano .sql: ' + file.name + msg, errors > 0 ? 'warn' : 'ok');
-      showToast(errors > 0 ? `⚠️ Załadowano z ${errors} błędami` : '✅ Baza załadowana z ' + file.name);
+      const msg = errors > 0 ? ` (wykonano ${ok}, błędy: ${errors})` : ' ✓';
+      setDbStatus('Załadowano .sql: ' + file.name + msg, errors > 0 && ok === 0 ? 'err' : ok > 0 ? 'ok' : 'warn');
+      showToast(ok > 0 ? `✅ Załadowano (${ok} instrukcji)` : '❌ Brak poprawnych instrukcji');
     } else {
       const buf = await file.arrayBuffer();
       if (sqlDb) sqlDb.close();
