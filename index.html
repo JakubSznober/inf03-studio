@@ -1910,82 +1910,86 @@ document.getElementById('db-file-inp').addEventListener('change', async e => {
       if (sqlDb) sqlDb.close();
       sqlDb = new SQL.Database();
 
-      // Convert MySQL dump to SQLite-compatible SQL
+      // ── Full MySQL → SQLite converter ──────────────────────────
       function mysqlToSqlite(sql) {
         return sql
-          // Remove MySQL comments  /*!40... */
-          .replace(/\/\*![^*]*\*+(?:[^/*][^*]*\*+)*\//g, '')
-          // Remove ENGINE=..., AUTO_INCREMENT=N, DEFAULT CHARSET=..., ROW_FORMAT=..., COLLATE=...
-          .replace(/\s+ENGINE\s*=\s*\w+/gi, '')
-          .replace(/\s+AUTO_INCREMENT\s*=\s*\d+/gi, '')
-          .replace(/\s+DEFAULT\s+CHARSET\s*=\s*[\w\d]+/gi, '')
-          .replace(/\s+COLLATE\s*=\s*[\w\d_]+/gi, '')
-          .replace(/\s+ROW_FORMAT\s*=\s*\w+/gi, '')
-          .replace(/\s+COMMENT\s*=\s*'[^']*'/gi, '')
-          // Remove column-level: CHARACTER SET x, COLLATE x
+          // Strip /*!40101 ... */ version-specific comments
+          .replace(/\/\*![\s\S]*?\*\//gm, '')
+          // Strip single-line -- comments that are whole lines
+          // (keep inline, splitStatements handles them)
+          // Strip table-level options after closing )
+          .replace(/\)\s*ENGINE\s*=\s*[^\n;]*/gi, ')')
+          // Remove column CHARACTER SET / COLLATE
           .replace(/\s+CHARACTER\s+SET\s+[\w\d_]+/gi, '')
           .replace(/\s+COLLATE\s+[\w\d_]+/gi, '')
-          // Remove display width from int: int(11) → int
-          .replace(/\b(TINYINT|SMALLINT|MEDIUMINT|INT|BIGINT)\s*\(\s*\d+\s*\)/gi, '$1')
-          // Remove UNSIGNED
+          // Remove UNSIGNED, ZEROFILL
           .replace(/\s+UNSIGNED/gi, '')
-          // Replace AUTO_INCREMENT with AUTOINCREMENT (column-level)
+          .replace(/\s+ZEROFILL/gi, '')
+          // Remove display width from integer types: int(11) → int
+          .replace(/\b(TINYINT|SMALLINT|MEDIUMINT|INT|BIGINT)\s*\(\s*\d+\s*\)/gi, '$1')
+          // column-level AUTO_INCREMENT → AUTOINCREMENT
           .replace(/\bAUTO_INCREMENT\b/gi, 'AUTOINCREMENT')
-          // Remove KEY definitions inside CREATE TABLE (INDEX/KEY lines)
-          .replace(/,?\s*\n\s*(UNIQUE\s+)?KEY\s+`?[^`(]+`?\s*\([^)]*\)/gi, '')
-          // Remove trailing comma before ) that KEY removal may leave
+          // Remove KEY / INDEX lines inside CREATE TABLE  (PRIMARY KEY stays!)
+          .replace(/,\s*\n(\s*(UNIQUE\s+)?KEY\s[^\n]+)/gi, '')
+          .replace(/,\s*\n(\s*INDEX\s[^\n]+)/gi, '')
+          // Remove trailing comma before closing ) from above removals
           .replace(/,(\s*\n\s*\))/g, '$1');
       }
 
-      // Split on semicolons (but not inside strings) - use line-based approach
+      // ── Statement splitter (respects strings) ──────────────────
       function splitStatements(sql) {
         const stmts = [];
-        let current = '';
-        let inString = false;
-        let stringChar = '';
+        let cur = '', inStr = false, strCh = '';
         for (let i = 0; i < sql.length; i++) {
-          const ch = sql[i];
-          if (!inString && (ch === "'" || ch === '"')) {
-            inString = true; stringChar = ch; current += ch;
-          } else if (inString && ch === stringChar && sql[i-1] !== '\\') {
-            inString = false; current += ch;
-          } else if (!inString && ch === ';') {
-            const s = current.trim();
+          const c = sql[i];
+          if (!inStr && (c === "'" || c === '"' || c === '`')) {
+            inStr = true; strCh = c; cur += c;
+          } else if (inStr && c === strCh && sql[i-1] !== '\\') {
+            inStr = false; cur += c;
+          } else if (!inStr && c === ';') {
+            const s = cur.trim();
             if (s) stmts.push(s);
-            current = '';
-          } else {
-            current += ch;
-          }
+            cur = '';
+          } else { cur += c; }
         }
-        const s = current.trim();
-        if (s) stmts.push(s);
+        const s = cur.trim(); if (s) stmts.push(s);
         return stmts;
       }
 
-      const converted = mysqlToSqlite(text);
-      const stmts = splitStatements(converted)
-        .filter(s => {
-          if (!s || s.startsWith('--')) return false;
-          const upper = s.toUpperCase().trimStart();
-          return !(
-            upper.startsWith('SET ') ||
-            upper.startsWith('USE ') ||
-            upper.startsWith('LOCK ') ||
-            upper.startsWith('UNLOCK ') ||
-            upper.startsWith('START TRANSACTION') ||
-            upper.startsWith('COMMIT') ||
-            upper.startsWith('ROLLBACK') ||
-            upper.startsWith('DELIMITER')
-          );
-        });
-
-      let errors = 0, ok = 0;
-      for (const stmt of stmts) {
-        try { sqlDb.run(stmt + ';'); ok++; } catch(e) { errors++; }
+      // ── Filter statements unsupported by SQLite ─────────────────
+      function isSupportedStmt(s) {
+        if (!s || /^\s*--/.test(s) || /^\s*$/.test(s)) return false;
+        const u = s.toUpperCase().trimStart();
+        // Skip MySQL-only session/transaction commands
+        if (/^SET\s/.test(u)) return false;
+        if (/^USE\s/.test(u)) return false;
+        if (/^LOCK\s/.test(u)) return false;
+        if (/^UNLOCK\s/.test(u)) return false;
+        if (/^START\s+TRANSACTION/.test(u)) return false;
+        if (/^COMMIT\b/.test(u)) return false;
+        if (/^ROLLBACK\b/.test(u)) return false;
+        if (/^DELIMITER\b/.test(u)) return false;
+        // ALTER TABLE: keep only ADD COLUMN, DROP COLUMN, RENAME
+        if (/^ALTER\s+TABLE\s/.test(u)) {
+          if (/ADD\s+COLUMN\b/i.test(u)) return true;
+          if (/DROP\s+COLUMN\b/i.test(u)) return true;
+          if (/RENAME\s+(TO|COLUMN)\b/i.test(u)) return true;
+          return false; // ADD KEY, ADD PRIMARY KEY, MODIFY, CHANGE, ADD CONSTRAINT...
+        }
+        return true;
       }
-      const msg = errors > 0 ? ` (wykonano ${ok}, błędy: ${errors})` : ' ✓';
-      setDbStatus('Załadowano .sql: ' + file.name + msg, errors > 0 && ok === 0 ? 'err' : ok > 0 ? 'ok' : 'warn');
-      showToast(ok > 0 ? `✅ Załadowano (${ok} instrukcji)` : '❌ Brak poprawnych instrukcji');
+
+      const stmts = splitStatements(mysqlToSqlite(text)).filter(isSupportedStmt);
+
+      let errors = 0, ok = 0, errorLog = [];
+      for (const stmt of stmts) {
+        try { sqlDb.run(stmt + ';'); ok++; }
+        catch(e) { errors++; errorLog.push(e.message); }
+      }
+      const msg = errors > 0 ? ` (OK: ${ok}, błędy: ${errors})` : ` ✓ (${ok} instrukcji)`;
+      setDbStatus('Załadowano: ' + file.name + msg, errors > 0 && ok === 0 ? 'err' : 'ok');
+      showToast(ok > 0 ? `✅ Załadowano (${ok} instrukcji${errors ? ', błędy: '+errors : ''})` : '❌ Brak poprawnych instrukcji');
+      if (errorLog.length) console.warn('[SQL import errors]', errorLog);
     } else {
       const buf = await file.arrayBuffer();
       if (sqlDb) sqlDb.close();
